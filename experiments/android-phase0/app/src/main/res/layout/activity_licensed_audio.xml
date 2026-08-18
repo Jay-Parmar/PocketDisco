@@ -1,0 +1,280 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:importantForAutofill="noExcludeDescendants"
+    tools:ignore="HardcodedText">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/licensed_audio_title"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Each phone fetches its own authorized HTTPS asset. Use built-in speakers or wired output for the primary result."
+            android:textSize="14sp" />
+
+        <EditText
+            android:id="@+id/device_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:hint="Device label, for example phone-a"
+            android:inputType="text" />
+
+        <EditText
+            android:id="@+id/trial_id"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Shared trial ID, for example run-01"
+            android:inputType="text" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Output under test" />
+
+        <RadioGroup
+            android:id="@+id/output_category"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <RadioButton
+                android:id="@+id/output_built_in"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:checked="true"
+                android:text="Built-in speakers" />
+
+            <RadioButton
+                android:id="@+id/output_wired"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Wired output" />
+
+            <RadioButton
+                android:id="@+id/output_bluetooth"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Bluetooth, best effort" />
+        </RadioGroup>
+
+        <EditText
+            android:id="@+id/asset_id"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Non-secret asset label"
+            android:inputType="text" />
+
+        <EditText
+            android:id="@+id/asset_sha256"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Asset SHA-256, 64 hex characters"
+            android:inputType="text" />
+
+        <EditText
+            android:id="@+id/asset_url"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:importantForAutofill="no"
+            android:hint="HTTPS .m4a or .mp4 URL"
+            android:inputType="textUri"
+            android:saveEnabled="false" />
+
+        <CheckBox
+            android:id="@+id/rights_confirmed"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="I confirm this test recording is owned or licensed for this use" />
+
+        <EditText
+            android:id="@+id/playback_position_ms"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Playback position in ms"
+            android:inputType="number"
+            android:text="0" />
+
+        <Button
+            android:id="@+id/preload"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Preload and wait for ready" />
+
+        <TextView
+            android:id="@+id/player_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Player: idle"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="LAN coordinator, preferred"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/coordinator_url"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Coordinator URL, for example http://192.168.1.2:8765"
+            android:inputType="textUri" />
+
+        <EditText
+            android:id="@+id/coordinator_token"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Coordinator bearer token"
+            android:importantForAutofill="no"
+            android:inputType="textPassword"
+            android:saveEnabled="false" />
+
+        <Button
+            android:id="@+id/sync_coordinator_clock"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Take 7 coordinator time samples" />
+
+        <TextView
+            android:id="@+id/clock_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Clock: not synchronized" />
+
+        <Button
+            android:id="@+id/create_coordinator_trial"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Create and schedule trial 25 seconds ahead" />
+
+        <EditText
+            android:id="@+id/coordinator_trial_id"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Coordinator trial UUID"
+            android:inputType="text" />
+
+        <Button
+            android:id="@+id/fetch_coordinator_trial"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Fetch and schedule trial" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="Manual common epoch, lower-confidence fallback"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/start_wall_time_ms"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:hint="Common Unix start time in ms"
+            android:inputType="number" />
+
+        <Button
+            android:id="@+id/generate_target"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Generate target 30 seconds ahead" />
+
+        <Button
+            android:id="@+id/copy_target"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Copy common target" />
+
+        <Button
+            android:id="@+id/schedule_play"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Schedule at local monotonic target" />
+
+        <LinearLayout
+            style="?android:attr/buttonBarStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/play_now"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Play now" />
+
+            <Button
+                android:id="@+id/pause"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Pause" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/seek"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Seek to playback position" />
+
+        <Button
+            android:id="@+id/mark_audible_onset"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Mark audible onset observation" />
+
+        <Button
+            android:id="@+id/mark_start_failure"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Mark coordinator start failure" />
+
+        <Button
+            android:id="@+id/export_telemetry"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Export detailed NDJSON telemetry" />
+
+        <Button
+            android:id="@+id/export_sync_observations"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Export sync-analysis observations" />
+
+        <TextView
+            android:id="@+id/telemetry_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:fontFamily="monospace"
+            android:text="No telemetry yet"
+            android:textIsSelectable="true"
+            android:textSize="12sp" />
+
+    </LinearLayout>
+</ScrollView>

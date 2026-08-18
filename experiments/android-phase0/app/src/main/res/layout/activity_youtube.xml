@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:importantForAutofill="noExcludeDescendants"
+    android:orientation="vertical"
+    android:padding="12dp"
+    tools:ignore="HardcodedText">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/youtube_title"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/youtube_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="Initialize with a controlled HTTPS origin. Playback is foreground-only and best effort."
+        android:textSize="13sp" />
+
+    <WebView
+        android:id="@+id/youtube_webview"
+        android:layout_width="match_parent"
+        android:layout_height="340dp"
+        android:layout_marginTop="8dp"
+        android:minHeight="200dp"
+        android:minWidth="200dp" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <EditText
+                android:id="@+id/device_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Device label, for example phone-a"
+                android:inputType="text" />
+
+            <EditText
+                android:id="@+id/trial_id"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Shared trial ID"
+                android:inputType="text" />
+
+            <EditText
+                android:id="@+id/web_origin"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Controlled HTTPS origin"
+                android:inputType="textUri" />
+
+            <Button
+                android:id="@+id/initialize_youtube"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Initialize official IFrame player" />
+
+            <EditText
+                android:id="@+id/video_id"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="YouTube video ID"
+                android:inputType="text" />
+
+            <Button
+                android:id="@+id/cue_video"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Cue video" />
+
+            <EditText
+                android:id="@+id/playlist_id"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="YouTube playlist ID"
+                android:inputType="text" />
+
+            <Button
+                android:id="@+id/cue_playlist"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Cue playlist" />
+
+            <EditText
+                android:id="@+id/seek_seconds"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Seek position in seconds"
+                android:inputType="numberDecimal"
+                android:text="0" />
+
+            <LinearLayout
+                style="?android:attr/buttonBarStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/play_youtube"
+                    style="?android:attr/buttonBarButtonStyle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:enabled="false"
+                    android:text="Play" />
+
+                <Button
+                    android:id="@+id/pause_youtube"
+                    style="?android:attr/buttonBarButtonStyle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Pause" />
+
+                <Button
+                    android:id="@+id/seek_youtube"
+                    style="?android:attr/buttonBarButtonStyle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Seek" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/mark_ad"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Mark ad observed, do not alter it" />
+
+            <Button
+                android:id="@+id/export_telemetry"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Export NDJSON telemetry" />
+
+            <TextView
+                android:id="@+id/telemetry_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:text="Use the Ready to play button below the visible player before native Play."
+                android:textIsSelectable="true"
+                android:textSize="12sp" />
+
+        </LinearLayout>
+    </ScrollView>
+
+</LinearLayout>
