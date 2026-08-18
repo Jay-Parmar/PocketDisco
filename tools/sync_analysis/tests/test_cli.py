@@ -70,6 +70,58 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 1)
 
+    def test_android_playback_exports_form_one_valid_start(self) -> None:
+        observations = [
+            {
+                "schema_version": 1,
+                "event_type": "playback_start",
+                "trial_id": "trial-1",
+                "start_id": "20000",
+                "device_id": "phone-a",
+                "provider": "licensed_audio",
+                "output_category": "built_in",
+                "outcome": "ok",
+                "timestamp_ms": 20017,
+                "clock_id": "coordinator:trial-1",
+            },
+            {
+                "schema_version": 1,
+                "event_type": "playback_start",
+                "trial_id": "trial-1",
+                "start_id": "20000",
+                "device_id": "phone-b",
+                "provider": "licensed_audio",
+                "output_category": "built_in",
+                "outcome": "ok",
+                "timestamp_ms": 20043,
+                "clock_id": "coordinator:trial-1",
+            },
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "android.jsonl")
+            path.write_text(
+                "\n".join(json.dumps(item) for item in observations),
+                encoding="utf-8",
+            )
+            stdout = io.StringIO()
+
+            with redirect_stdout(stdout):
+                exit_code = main(
+                    [
+                        str(path),
+                        "--format",
+                        "json",
+                        "--gate-measurement",
+                        "playback_start",
+                        "--minimum-starts",
+                        "1",
+                    ]
+                )
+
+        report = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["categories"][0]["skew_ms"]["p95"], 26)
+
     def test_invalid_input_returns_structured_error(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory, "bad.jsonl")
