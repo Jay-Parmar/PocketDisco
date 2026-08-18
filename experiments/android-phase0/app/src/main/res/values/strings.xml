@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PocketDisco Phase 0</string>
+    <string name="licensed_audio_title">Licensed MP4/AAC sync probe</string>
+    <string name="youtube_title">YouTube foreground probe</string>
+</resources>
