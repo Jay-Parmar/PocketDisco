@@ -178,6 +178,22 @@ class CoordinatorServerTests(unittest.TestCase):
         self.assertEqual(413, status)
         self.assertEqual("request_body_too_large", payload["error"]["code"])
 
+    def test_oversized_content_length_returns_json_error(self) -> None:
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=2)
+        connection.putrequest("POST", "/v1/trials")
+        connection.putheader("Authorization", f"Bearer {TOKEN}")
+        connection.putheader("Content-Type", "application/json")
+        connection.putheader("Idempotency-Key", "oversized-length")
+        connection.putheader("Content-Length", "9" * 5_000)
+        connection.endheaders()
+
+        response = connection.getresponse()
+        payload = json.loads(response.read())
+        connection.close()
+
+        self.assertEqual(413, response.status)
+        self.assertEqual("request_body_too_large", payload["error"]["code"])
+
     def test_request_target_size_limit_returns_json_error(self) -> None:
         path = "/v1/time/" + ("x" * 2050)
         status, payload, _ = self.request("GET", path, headers=self.auth_headers())

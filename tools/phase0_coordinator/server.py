@@ -333,7 +333,14 @@ class CoordinatorRequestHandler(BaseHTTPRequestHandler):
                 "content_length_required",
                 "One valid Content-Length header is required.",
             )
-        length = int(lengths[0])
+        raw_length = lengths[0]
+        if len(raw_length) > len(str(MAX_BODY_BYTES)):
+            raise ApiError(
+                HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                "request_body_too_large",
+                "The JSON request body exceeds 4096 bytes.",
+            )
+        length = int(raw_length)
         if length > MAX_BODY_BYTES:
             raise ApiError(
                 HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
