@@ -25,12 +25,17 @@ Mark these only after inspecting the repository revision under test.
 
 | ID | Code artifact | Status | Repository path and commit | Test result |
 |---|---|---|---|---|
-| `P0-CODE-01` | Throwaway Android Media3 harness builds and installs on both phones | `Pending` | | |
-| `P0-CODE-02` | Native monotonic scheduling, preload, ready, and structured event logging are implemented | `Pending` | | |
-| `P0-CODE-03` | The harness loads owned or licensed MP4/AAC from a media origin separate from the control endpoint | `Pending` | | |
-| `P0-CODE-04` | Repeatable skew calculation reports attempts, failures, median, nearest-rank p95, and maximum | `Pending` | | |
-| `P0-CODE-05` | Separate Android WebView harness keeps the official YouTube IFrame visible and handles readiness and `onAutoplayBlocked` | `Pending` | | |
-| `P0-CODE-06` | No Spotify playback adapter, SDK integration, or synchronized Spotify test is present without written approval | `Pending` | | |
+| `P0-CODE-01` | Throwaway Android Media3 harness builds and installs on both phones | `Pending` | `experiments/android-phase0` | APK builds locally; installs on two phones are pending |
+| `P0-CODE-02` | Native monotonic scheduling, preload, ready, and structured event logging are implemented | `Pass` | `experiments/android-phase0` at `481c4ee` | 18 unit tests passed; lint reported no issues |
+| `P0-CODE-03` | The harness loads owned or licensed MP4/AAC from a media origin separate from the control endpoint | `Pending` | `experiments/android-phase0` | Code enforces separate HTTPS media input; licensed device run is pending |
+| `P0-CODE-04` | Repeatable skew calculation reports attempts, failures, median, nearest-rank p95, and maximum | `Pass` | `tools/sync_analysis` at `481c4ee` | 19 unit tests passed, including Android playback export pairing |
+| `P0-CODE-05` | Separate Android WebView harness keeps the official YouTube IFrame visible and handles readiness and `onAutoplayBlocked` | `Pass` | `experiments/android-phase0` at `481c4ee` | Unit tests and lint passed; physical-device cases remain separate gates |
+| `P0-CODE-06` | No Spotify playback adapter, SDK integration, or synchronized Spotify test is present without written approval | `Pass` | Branch scan at `481c4ee` | No Spotify playback implementation is present |
+
+Local validation completed at `2026-08-18T19:01:25Z`. The debug APK was
+3,737,189 bytes with SHA-256
+`cc4d50ae3514416012cd77d6f917cb847f67f25718f369131aaaeec6b16f4fdc`.
+The APK is a local build output and is not committed.
 
 ## 3. External and rights evidence
 

@@ -116,6 +116,10 @@ for wired output.
 
 Continue until there are at least 10 valid trials, but report every attempt. A
 failure is not converted into a valid trial or omitted from the failure count.
+The Android telemetry export is cumulative. Retain the latest export from each
+phone as the session snapshot and do not combine earlier snapshots from the same
+phone. If a scheduled start produces no terminal event, record a failure on each
+phone before exporting.
 
 ## Audible-onset analysis
 
