@@ -26,8 +26,16 @@ class YouTubeControlTrialTest {
 
         assertEquals(YouTubeItemType.VIDEO, video.itemType)
         assertEquals("M7lc1UVf-VE", video.itemId)
+        assertEquals(
+            "window.phase0.cueVideo(\"M7lc1UVf-VE\", 1.5);",
+            video.cueScript(),
+        )
         assertEquals(YouTubeItemType.PLAYLIST, playlist.itemType)
         assertEquals("PL1234567890", playlist.itemId)
+        assertEquals(
+            "window.phase0.cuePlaylist(\"PL1234567890\", 0.0);",
+            playlist.cueScript(),
+        )
     }
 
     @Test

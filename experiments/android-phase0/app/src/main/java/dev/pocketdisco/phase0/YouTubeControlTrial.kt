@@ -42,6 +42,14 @@ data class YouTubeControlTrial(
     val effectiveAtUnixMs: Long,
     val createdAtUnixMs: Long,
 ) {
+    fun cueScript(): String {
+        val seconds = requestedPositionMs / 1_000.0
+        return when (itemType) {
+            YouTubeItemType.VIDEO -> "window.phase0.cueVideo(${JsonString.quote(itemId)}, $seconds);"
+            YouTubeItemType.PLAYLIST -> "window.phase0.cuePlaylist(${JsonString.quote(itemId)}, $seconds);"
+        }
+    }
+
     companion object {
         fun parse(
             id: String,

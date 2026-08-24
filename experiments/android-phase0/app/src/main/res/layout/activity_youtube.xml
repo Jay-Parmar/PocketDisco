@@ -129,6 +129,59 @@
                     android:text="Seek" />
             </LinearLayout>
 
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Control-only LAN coordinator"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/coordinator_url"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Coordinator URL, for example http://192.168.1.2:8765"
+                android:inputType="textUri" />
+
+            <EditText
+                android:id="@+id/coordinator_token"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Coordinator bearer token"
+                android:inputType="textPassword" />
+
+            <Button
+                android:id="@+id/sync_coordinator_clock"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Take 7 coordinator time samples" />
+
+            <TextView
+                android:id="@+id/clock_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Clock: not synchronized"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/create_youtube_trial"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Create YouTube control trial 25 seconds ahead" />
+
+            <EditText
+                android:id="@+id/coordinator_trial_id"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="YouTube control trial UUID"
+                android:inputType="text" />
+
+            <Button
+                android:id="@+id/fetch_youtube_trial"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Fetch and cue YouTube control trial" />
+
             <Button
                 android:id="@+id/mark_ad"
                 android:layout_width="match_parent"

@@ -23,6 +23,9 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
+import java.util.UUID
+import java.util.concurrent.Executors
+import kotlin.math.roundToLong
 
 @SuppressLint("SetTextI18n")
 class YouTubeActivity : Activity() {
@@ -33,12 +36,23 @@ class YouTubeActivity : Activity() {
     private lateinit var videoId: EditText
     private lateinit var playlistId: EditText
     private lateinit var seekSeconds: EditText
+    private lateinit var coordinatorUrl: EditText
+    private lateinit var coordinatorToken: EditText
+    private lateinit var coordinatorTrialId: EditText
     private lateinit var status: TextView
+    private lateinit var clockStatus: TextView
     private lateinit var telemetryStatus: TextView
     private lateinit var playButton: Button
+    private lateinit var syncClockButton: Button
+    private lateinit var createTrialButton: Button
+    private lateinit var fetchTrialButton: Button
+    private val networkExecutor = Executors.newSingleThreadExecutor()
     private var playerInitialized = false
     private var iframeReady = false
     private var screenReceiverRegistered = false
+    private var clockEstimate: ClockEstimate? = null
+    private var clockBaseUrl: String? = null
+    private var pendingYouTubeTrial: YouTubeControlTrial? = null
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -103,6 +117,7 @@ class YouTubeActivity : Activity() {
 
     override fun onDestroy() {
         unregisterScreenReceiver()
+        networkExecutor.shutdownNow()
         if (::recorder.isInitialized) record(category = "lifecycle", name = "activity_destroyed")
         if (::webView.isInitialized) {
             webView.removeJavascriptInterface(BRIDGE_NAME)
@@ -138,9 +153,16 @@ class YouTubeActivity : Activity() {
         videoId = findViewById(R.id.video_id)
         playlistId = findViewById(R.id.playlist_id)
         seekSeconds = findViewById(R.id.seek_seconds)
+        coordinatorUrl = findViewById(R.id.coordinator_url)
+        coordinatorToken = findViewById(R.id.coordinator_token)
+        coordinatorTrialId = findViewById(R.id.coordinator_trial_id)
         status = findViewById(R.id.youtube_status)
+        clockStatus = findViewById(R.id.clock_status)
         telemetryStatus = findViewById(R.id.telemetry_status)
         playButton = findViewById(R.id.play_youtube)
+        syncClockButton = findViewById(R.id.sync_coordinator_clock)
+        createTrialButton = findViewById(R.id.create_youtube_trial)
+        fetchTrialButton = findViewById(R.id.fetch_youtube_trial)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -206,6 +228,7 @@ class YouTubeActivity : Activity() {
                 val origin = ProbeInput.youtubeAppOrigin(applicationId)
                 playerInitialized = true
                 iframeReady = false
+                pendingYouTubeTrial = null
                 playButton.isEnabled = false
                 status.text = "Loading official YouTube IFrame player"
                 record(
@@ -225,12 +248,14 @@ class YouTubeActivity : Activity() {
         findViewById<Button>(R.id.cue_video).setOnClickListener {
             runInputAction {
                 val id = ProbeInput.videoId(videoId.text.toString())
+                pendingYouTubeTrial = null
                 evaluate("window.phase0.cueVideo(${JsonString.quote(id)}, 0);")
             }
         }
         findViewById<Button>(R.id.cue_playlist).setOnClickListener {
             runInputAction {
                 val id = ProbeInput.playlistId(playlistId.text.toString())
+                pendingYouTubeTrial = null
                 evaluate("window.phase0.cuePlaylist(${JsonString.quote(id)}, 0);")
             }
         }
@@ -251,8 +276,195 @@ class YouTubeActivity : Activity() {
         findViewById<Button>(R.id.mark_ad).setOnClickListener {
             record(category = "youtube", name = "ad_observed", detail = "manual_observation=true")
         }
+        syncClockButton.setOnClickListener { runInputAction(::synchronizeCoordinatorClock) }
+        createTrialButton.setOnClickListener { runInputAction(::createYouTubeTrial) }
+        fetchTrialButton.setOnClickListener { runInputAction(::fetchYouTubeTrial) }
         findViewById<Button>(R.id.export_telemetry).setOnClickListener {
             launchExport()
+        }
+    }
+
+    private fun synchronizeCoordinatorClock() {
+        val (baseUrl, token) = coordinatorCredentials()
+        syncClockButton.isEnabled = false
+        clockStatus.text = "Clock: sampling"
+        networkExecutor.execute {
+            try {
+                val client = CoordinatorClient(baseUrl, token)
+                val samples = buildList {
+                    repeat(CLOCK_SAMPLE_COUNT) {
+                        val sentAt = SystemClock.elapsedRealtime()
+                        val response = client.getTime()
+                        val receivedAt = SystemClock.elapsedRealtime()
+                        add(
+                            ClockSample(
+                                clientSendElapsedRealtimeMs = sentAt,
+                                clientReceiveElapsedRealtimeMs = receivedAt,
+                                serverReceiveUnixMs = response.serverReceiveUnixMs,
+                                serverSendUnixMs = response.serverSendUnixMs,
+                            ),
+                        )
+                    }
+                }
+                val estimate = ClockEstimator.estimate(samples)
+                runOnUiThread {
+                    if (isDestroyed) return@runOnUiThread
+                    clockEstimate = estimate
+                    clockBaseUrl = baseUrl
+                    samples.forEachIndexed { index, sample ->
+                        record(
+                            category = "clock",
+                            name = "youtube_coordinator_time_sample",
+                            detail = "index=$index;rtt_ms=${sample.roundTripTimeMs};" +
+                                "network_rtt_ms=${sample.networkRoundTripTimeMs};" +
+                                "offset_ms=${sample.serverToElapsedOffsetMs}",
+                        )
+                    }
+                    record(
+                        category = "clock",
+                        name = "youtube_coordinator_clock_estimated",
+                        detail = "samples=${estimate.sampleCount};" +
+                            "best_network_rtt_ms=${estimate.bestNetworkRoundTripTimeMs};" +
+                            "uncertainty_ms=${estimate.uncertaintyMs};" +
+                            "offset_ms=${estimate.serverToElapsedOffsetMs}",
+                    )
+                    clockStatus.text = "Clock: ${estimate.uncertaintyMs} ms uncertainty, " +
+                        "best RTT ${estimate.bestNetworkRoundTripTimeMs} ms"
+                    syncClockButton.isEnabled = true
+                }
+            } catch (error: Exception) {
+                coordinatorFailure("Clock synchronization", error) {
+                    syncClockButton.isEnabled = true
+                    clockStatus.text = "Clock: synchronization failed"
+                }
+            }
+        }
+    }
+
+    private fun createYouTubeTrial() {
+        require(iframeReady) { "Initialize the YouTube player first" }
+        val estimate = currentClockEstimate()
+        val (baseUrl, token) = coordinatorCredentials()
+        require(baseUrl == clockBaseUrl) { "Synchronize the clock again after changing the coordinator URL" }
+        val (itemType, itemId) = selectedYouTubeItem()
+        val request = YouTubeControlTrialRequest(
+            itemType = itemType,
+            itemId = itemId,
+            requestedPositionMs = requestedPositionMs(),
+            effectiveAtUnixMs = estimate.serverUnixForElapsedRealtime(SystemClock.elapsedRealtime()) +
+                COORDINATOR_LEAD_TIME_MS,
+        )
+        val idempotencyKey = UUID.randomUUID().toString()
+        createTrialButton.isEnabled = false
+        networkExecutor.execute {
+            try {
+                val trial = CoordinatorClient(baseUrl, token).createYouTubeTrial(request, idempotencyKey)
+                runOnUiThread {
+                    if (isDestroyed) return@runOnUiThread
+                    createTrialButton.isEnabled = true
+                    applyYouTubeTrial(trial)
+                }
+            } catch (error: Exception) {
+                coordinatorFailure("Create YouTube trial", error) { createTrialButton.isEnabled = true }
+            }
+        }
+    }
+
+    private fun fetchYouTubeTrial() {
+        require(iframeReady) { "Initialize the YouTube player first" }
+        currentClockEstimate()
+        val (baseUrl, token) = coordinatorCredentials()
+        require(baseUrl == clockBaseUrl) { "Synchronize the clock again after changing the coordinator URL" }
+        val requestedTrialId = coordinatorTrialId.text.toString().trim()
+        fetchTrialButton.isEnabled = false
+        networkExecutor.execute {
+            try {
+                val trial = CoordinatorClient(baseUrl, token).getYouTubeTrial(requestedTrialId)
+                runOnUiThread {
+                    if (isDestroyed) return@runOnUiThread
+                    fetchTrialButton.isEnabled = true
+                    applyYouTubeTrial(trial)
+                }
+            } catch (error: Exception) {
+                coordinatorFailure("Fetch YouTube trial", error) { fetchTrialButton.isEnabled = true }
+            }
+        }
+    }
+
+    private fun applyYouTubeTrial(trial: YouTubeControlTrial) {
+        runInputAction {
+            require(iframeReady) { "Initialize the YouTube player first" }
+            require(deviceLabel.text.toString().isNotBlank()) { "Device label is required" }
+            val estimate = currentClockEstimate()
+            val targetElapsed = estimate.elapsedRealtimeForServerUnix(trial.effectiveAtUnixMs)
+            require(targetElapsed - SystemClock.elapsedRealtime() >= MINIMUM_PREPARE_LEAD_MS) {
+                "YouTube trial start is too close or has passed"
+            }
+            pendingYouTubeTrial = trial
+            coordinatorTrialId.setText(trial.id)
+            trialId.setText(trial.id)
+            seekSeconds.setText((trial.requestedPositionMs / 1_000.0).toString())
+            when (trial.itemType) {
+                YouTubeItemType.VIDEO -> {
+                    videoId.setText(trial.itemId)
+                    playlistId.text.clear()
+                }
+                YouTubeItemType.PLAYLIST -> {
+                    playlistId.setText(trial.itemId)
+                    videoId.text.clear()
+                }
+            }
+            playButton.isEnabled = false
+            evaluate(trial.cueScript())
+            record(
+                category = "coordination",
+                name = "youtube_trial_prepared",
+                detail = "trial_id=${trial.id};item_type=${trial.itemType.wireValue};" +
+                    "item_id=${trial.itemId};target_elapsed_ms=$targetElapsed;" +
+                    "clock_uncertainty_ms=${estimate.uncertaintyMs}",
+            )
+            status.text = "Trial cued. Tap Ready to play in the WebView to arm it."
+        }
+    }
+
+    private fun selectedYouTubeItem(): Pair<YouTubeItemType, String> {
+        val video = videoId.text.toString().trim()
+        val playlist = playlistId.text.toString().trim()
+        require(video.isBlank() != playlist.isBlank()) { "Enter one YouTube video or playlist ID" }
+        return if (video.isNotBlank()) {
+            YouTubeItemType.VIDEO to ProbeInput.videoId(video)
+        } else {
+            YouTubeItemType.PLAYLIST to ProbeInput.playlistId(playlist)
+        }
+    }
+
+    private fun requestedPositionMs(): Long {
+        val seconds = seekSeconds.text.toString().trim().toDoubleOrNull()
+            ?: throw IllegalArgumentException("Enter a seek position in seconds")
+        require(seconds >= 0.0 && seconds.isFinite()) { "Seek position must be a finite positive number" }
+        return (seconds * 1_000.0).roundToLong()
+    }
+
+    private fun coordinatorCredentials(): Pair<String, String> {
+        val baseUrl = ProbeInput.coordinatorBaseUrl(coordinatorUrl.text.toString())
+        val token = coordinatorToken.text.toString()
+        require(token.isNotBlank()) { "Coordinator bearer token is required" }
+        return baseUrl to token
+    }
+
+    private fun currentClockEstimate(): ClockEstimate =
+        clockEstimate ?: throw IllegalStateException("Take seven coordinator time samples first")
+
+    private fun coordinatorFailure(label: String, error: Exception, cleanup: () -> Unit) {
+        runOnUiThread {
+            if (isDestroyed) return@runOnUiThread
+            cleanup()
+            record(
+                category = "coordinator",
+                name = "youtube_request_failed",
+                detail = "operation=$label;error_type=${error.javaClass.simpleName}",
+            )
+            toast("$label failed: ${error.message ?: error.javaClass.simpleName}")
         }
     }
 
@@ -351,6 +563,8 @@ class YouTubeActivity : Activity() {
             action()
         } catch (error: IllegalArgumentException) {
             toast(error.message ?: "Invalid input")
+        } catch (error: IllegalStateException) {
+            toast(error.message ?: "YouTube player is not ready")
         }
     }
 
@@ -379,5 +593,8 @@ class YouTubeActivity : Activity() {
     companion object {
         private const val BRIDGE_NAME = "PocketDiscoBridge"
         private const val EXPORT_REQUEST = 2001
+        private const val COORDINATOR_LEAD_TIME_MS = 25_000L
+        private const val MINIMUM_PREPARE_LEAD_MS = 500L
+        private const val CLOCK_SAMPLE_COUNT = 7
     }
 }
