@@ -225,13 +225,13 @@ class YouTubeActivity : Activity() {
         findViewById<Button>(R.id.cue_video).setOnClickListener {
             runInputAction {
                 val id = ProbeInput.videoId(videoId.text.toString())
-                evaluate("window.phase0.cueVideo(${JsonString.quote(id)});")
+                evaluate("window.phase0.cueVideo(${JsonString.quote(id)}, 0);")
             }
         }
         findViewById<Button>(R.id.cue_playlist).setOnClickListener {
             runInputAction {
                 val id = ProbeInput.playlistId(playlistId.text.toString())
-                evaluate("window.phase0.cuePlaylist(${JsonString.quote(id)});")
+                evaluate("window.phase0.cuePlaylist(${JsonString.quote(id)}, 0);")
             }
         }
         playButton.setOnClickListener {

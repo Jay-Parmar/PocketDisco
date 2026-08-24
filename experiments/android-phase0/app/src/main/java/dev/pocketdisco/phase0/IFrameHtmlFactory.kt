@@ -115,21 +115,21 @@ object IFrameHtmlFactory {
             };
 
             window.phase0 = {
-              cueVideo: function (videoId) {
+              cueVideo: function (videoId, startSeconds) {
                 if (!player || !iframeReady) return;
                 resetReadiness('cue_video');
                 lastVideoId = '';
                 lastPlaylistIndex = -1;
-                player.cueVideoById({ videoId: videoId, startSeconds: 0 });
-                report('cue_video_requested', { video_id: videoId });
+                player.cueVideoById({ videoId: videoId, startSeconds: startSeconds });
+                report('cue_video_requested', { video_id: videoId, start_seconds: startSeconds });
               },
-              cuePlaylist: function (playlistId) {
+              cuePlaylist: function (playlistId, startSeconds) {
                 if (!player || !iframeReady) return;
                 resetReadiness('cue_playlist');
                 lastVideoId = '';
                 lastPlaylistIndex = -1;
-                player.cuePlaylist({ listType: 'playlist', list: playlistId, index: 0, startSeconds: 0 });
-                report('cue_playlist_requested', { playlist_id: playlistId });
+                player.cuePlaylist({ listType: 'playlist', list: playlistId, index: 0, startSeconds: startSeconds });
+                report('cue_playlist_requested', { playlist_id: playlistId, start_seconds: startSeconds });
               },
               play: function () {
                 if (!player || !iframeReady) return;
