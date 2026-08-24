@@ -24,8 +24,11 @@ MAX_POSITION_MS = 86_400_000
 
 _ASSET_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
 _SHA256_PATTERN = re.compile(r"[0-9a-fA-F]{64}\Z")
+_YOUTUBE_VIDEO_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{11}\Z")
+_YOUTUBE_PLAYLIST_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{10,100}\Z")
 _IDEMPOTENCY_KEY_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
 _TRIAL_PATH_PATTERN = re.compile(r"/v1/trials/([0-9a-fA-F-]{36})\Z")
+_YOUTUBE_TRIAL_PATH_PATTERN = re.compile(r"/v1/youtube-trials/([0-9a-fA-F-]{36})\Z")
 _HTTP_LOG = logging.getLogger("pocketdisco.phase0_coordinator.http")
 
 
@@ -55,6 +58,34 @@ class Trial:
             "id": self.id,
             "asset_id": self.asset_id,
             "asset_sha256": self.asset_sha256,
+            "requested_position_ms": self.requested_position_ms,
+            "effective_at_unix_ms": self.effective_at_unix_ms,
+            "created_at_unix_ms": self.created_at_unix_ms,
+        }
+
+
+@dataclass(frozen=True)
+class YouTubeTrialPayload:
+    item_type: str
+    item_id: str
+    requested_position_ms: int
+    effective_at_unix_ms: int
+
+
+@dataclass(frozen=True)
+class YouTubeTrial:
+    id: str
+    item_type: str
+    item_id: str
+    requested_position_ms: int
+    effective_at_unix_ms: int
+    created_at_unix_ms: int
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "item_type": self.item_type,
+            "item_id": self.item_id,
             "requested_position_ms": self.requested_position_ms,
             "effective_at_unix_ms": self.effective_at_unix_ms,
             "created_at_unix_ms": self.created_at_unix_ms,
@@ -130,6 +161,56 @@ class TrialStore:
             return self._trials.get(trial_id)
 
 
+class YouTubeTrialStore:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._trials: dict[str, YouTubeTrial] = {}
+        self._idempotency: dict[str, tuple[YouTubeTrialPayload, str]] = {}
+
+    def create(
+        self,
+        idempotency_key: str,
+        payload: YouTubeTrialPayload,
+        received_at_unix_ms: int,
+    ) -> tuple[YouTubeTrial, bool]:
+        with self._lock:
+            previous = self._idempotency.get(idempotency_key)
+            if previous is not None:
+                previous_payload, trial_id = previous
+                if previous_payload != payload:
+                    raise ApiError(
+                        HTTPStatus.CONFLICT,
+                        "idempotency_conflict",
+                        "The idempotency key was already used with a different payload.",
+                    )
+                return self._trials[trial_id], True
+
+            lead_ms = payload.effective_at_unix_ms - received_at_unix_ms
+            if not MIN_LEAD_MS <= lead_ms <= MAX_LEAD_MS:
+                raise ApiError(
+                    HTTPStatus.UNPROCESSABLE_ENTITY,
+                    "effective_time_out_of_range",
+                    "effective_at_unix_ms must be 2000 through 30000 ms after server receipt.",
+                )
+
+            trial_id = str(uuid.uuid4())
+            trial = YouTubeTrial(
+                id=trial_id,
+                item_type=payload.item_type,
+                item_id=payload.item_id,
+                requested_position_ms=payload.requested_position_ms,
+                effective_at_unix_ms=payload.effective_at_unix_ms,
+                created_at_unix_ms=received_at_unix_ms,
+            )
+            self._trials[trial_id] = trial
+            self._idempotency[idempotency_key] = (payload, trial_id)
+            return trial, False
+
+    def get(self, trial_id: str) -> YouTubeTrial | None:
+        with self._lock:
+            return self._trials.get(trial_id)
+
+
 class CoordinatorServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -143,6 +224,7 @@ class CoordinatorServer(ThreadingHTTPServer):
         self.token = token
         self.clock = clock
         self.trials = TrialStore()
+        self.youtube_trials = YouTubeTrialStore()
         super().__init__(server_address, CoordinatorRequestHandler)
 
 
@@ -227,17 +309,25 @@ class CoordinatorRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(HTTPStatus.OK, response)
                 return
 
-            match = _TRIAL_PATH_PATTERN.fullmatch(path)
-            if match is None:
-                raise ApiError(HTTPStatus.NOT_FOUND, "not_found", "The endpoint was not found.")
-            try:
-                trial_id = str(uuid.UUID(match.group(1)))
-            except ValueError:
-                raise ApiError(HTTPStatus.NOT_FOUND, "not_found", "The trial was not found.")
-            trial = self.coordinator.trials.get(trial_id)
-            if trial is None:
-                raise ApiError(HTTPStatus.NOT_FOUND, "not_found", "The trial was not found.")
-            self._send_json(HTTPStatus.OK, {"trial": trial.as_dict()})
+            trial_match = _TRIAL_PATH_PATTERN.fullmatch(path)
+            if trial_match is not None:
+                trial_id = normalized_trial_id(trial_match.group(1))
+                trial = self.coordinator.trials.get(trial_id)
+                if trial is None:
+                    raise ApiError(HTTPStatus.NOT_FOUND, "not_found", "The trial was not found.")
+                self._send_json(HTTPStatus.OK, {"trial": trial.as_dict()})
+                return
+
+            youtube_match = _YOUTUBE_TRIAL_PATH_PATTERN.fullmatch(path)
+            if youtube_match is not None:
+                trial_id = normalized_trial_id(youtube_match.group(1))
+                trial = self.coordinator.youtube_trials.get(trial_id)
+                if trial is None:
+                    raise ApiError(HTTPStatus.NOT_FOUND, "not_found", "The trial was not found.")
+                self._send_json(HTTPStatus.OK, {"trial": trial.as_dict()})
+                return
+
+            raise ApiError(HTTPStatus.NOT_FOUND, "not_found", "The endpoint was not found.")
         except ApiError as error:
             self._send_api_error(error)
 
@@ -246,15 +336,23 @@ class CoordinatorRequestHandler(BaseHTTPRequestHandler):
         try:
             self._authenticate()
             path = self._path_without_query()
-            if path != "/v1/trials":
+            if path not in {"/v1/trials", "/v1/youtube-trials"}:
                 raise ApiError(HTTPStatus.NOT_FOUND, "not_found", "The endpoint was not found.")
             idempotency_key = self._idempotency_key()
-            payload = parse_trial_payload(self._read_json_body())
-            trial, replayed = self.coordinator.trials.create(
-                idempotency_key,
-                payload,
-                received_at_unix_ms,
-            )
+            if path == "/v1/trials":
+                payload = parse_trial_payload(self._read_json_body())
+                trial, replayed = self.coordinator.trials.create(
+                    idempotency_key,
+                    payload,
+                    received_at_unix_ms,
+                )
+            else:
+                youtube_payload = parse_youtube_trial_payload(self._read_json_body())
+                trial, replayed = self.coordinator.youtube_trials.create(
+                    idempotency_key,
+                    youtube_payload,
+                    received_at_unix_ms,
+                )
             status = HTTPStatus.OK if replayed else HTTPStatus.CREATED
             headers = {"Idempotency-Replayed": "true"} if replayed else {}
             self._send_json(status, {"trial": trial.as_dict()}, headers)
@@ -444,6 +542,10 @@ class CoordinatorRequestHandler(BaseHTTPRequestHandler):
             return "/v1/trials"
         if path.startswith("/v1/trials/"):
             return "/v1/trials/{id}"
+        if path == "/v1/youtube-trials":
+            return "/v1/youtube-trials"
+        if path.startswith("/v1/youtube-trials/"):
+            return "/v1/youtube-trials/{id}"
         return "other"
 
 
@@ -512,6 +614,72 @@ def parse_trial_payload(value: object) -> TrialPayload:
         requested_position_ms=requested_position_ms,
         effective_at_unix_ms=effective_at_unix_ms,
     )
+
+
+def parse_youtube_trial_payload(value: object) -> YouTubeTrialPayload:
+    if not isinstance(value, dict):
+        raise ApiError(
+            HTTPStatus.UNPROCESSABLE_ENTITY,
+            "validation_error",
+            "The request body must be a JSON object.",
+        )
+    required = {
+        "item_type",
+        "item_id",
+        "requested_position_ms",
+        "effective_at_unix_ms",
+    }
+    if set(value) != required:
+        raise ApiError(
+            HTTPStatus.UNPROCESSABLE_ENTITY,
+            "validation_error",
+            "The request body must contain exactly the documented YouTube trial fields.",
+        )
+
+    item_type = value["item_type"]
+    item_id = value["item_id"]
+    requested_position_ms = value["requested_position_ms"]
+    effective_at_unix_ms = value["effective_at_unix_ms"]
+
+    if not isinstance(item_type, str) or item_type not in {"video", "playlist"}:
+        raise ApiError(
+            HTTPStatus.UNPROCESSABLE_ENTITY,
+            "validation_error",
+            "item_type must be video or playlist.",
+        )
+    item_pattern = _YOUTUBE_VIDEO_ID_PATTERN if item_type == "video" else _YOUTUBE_PLAYLIST_ID_PATTERN
+    if not isinstance(item_id, str) or item_pattern.fullmatch(item_id) is None:
+        raise ApiError(
+            HTTPStatus.UNPROCESSABLE_ENTITY,
+            "validation_error",
+            "item_id must be a valid YouTube video or playlist ID for item_type.",
+        )
+    if type(requested_position_ms) is not int or not 0 <= requested_position_ms <= MAX_POSITION_MS:
+        raise ApiError(
+            HTTPStatus.UNPROCESSABLE_ENTITY,
+            "validation_error",
+            "requested_position_ms must be an integer from 0 through 86400000.",
+        )
+    if type(effective_at_unix_ms) is not int or effective_at_unix_ms < 0:
+        raise ApiError(
+            HTTPStatus.UNPROCESSABLE_ENTITY,
+            "validation_error",
+            "effective_at_unix_ms must be a non-negative integer.",
+        )
+
+    return YouTubeTrialPayload(
+        item_type=item_type,
+        item_id=item_id,
+        requested_position_ms=requested_position_ms,
+        effective_at_unix_ms=effective_at_unix_ms,
+    )
+
+
+def normalized_trial_id(value: str) -> str:
+    try:
+        return str(uuid.UUID(value))
+    except ValueError:
+        raise ApiError(HTTPStatus.NOT_FOUND, "not_found", "The trial was not found.")
 
 
 def create_server(

@@ -73,6 +73,30 @@ class CoordinatorServerTests(unittest.TestCase):
         headers.update({"Content-Type": "application/json", "Idempotency-Key": key})
         return self.request("POST", "/v1/trials", body or self.trial_body(), headers)
 
+    def youtube_trial_body(self, **changes: object) -> bytes:
+        payload: dict[str, object] = {
+            "item_type": "video",
+            "item_id": "M7lc1UVf-VE",
+            "requested_position_ms": 0,
+            "effective_at_unix_ms": NOW_MS + 2_000,
+        }
+        payload.update(changes)
+        return json.dumps(payload).encode("utf-8")
+
+    def post_youtube_trial(
+        self,
+        key: str = "youtube-trial-key-1",
+        body: bytes | None = None,
+    ) -> tuple[int, dict[str, object], dict[str, str]]:
+        headers = self.auth_headers()
+        headers.update({"Content-Type": "application/json", "Idempotency-Key": key})
+        return self.request(
+            "POST",
+            "/v1/youtube-trials",
+            body or self.youtube_trial_body(),
+            headers,
+        )
+
     def test_time_returns_receive_and_send_unix_milliseconds(self) -> None:
         status, payload, _ = self.request("GET", "/v1/time", headers=self.auth_headers())
 
@@ -118,6 +142,106 @@ class CoordinatorServerTests(unittest.TestCase):
         self.assertEqual(200, second_status)
         self.assertEqual(first_payload, second_payload)
         self.assertEqual("true", second_headers["idempotency-replayed"])
+
+    def test_creates_and_fetches_a_youtube_control_trial(self) -> None:
+        status, payload, _ = self.post_youtube_trial()
+
+        self.assertEqual(201, status)
+        trial = payload["trial"]
+        self.assertEqual(
+            {
+                "id",
+                "item_type",
+                "item_id",
+                "requested_position_ms",
+                "effective_at_unix_ms",
+                "created_at_unix_ms",
+            },
+            set(trial),
+        )
+        self.assertEqual("video", trial["item_type"])
+        self.assertEqual("M7lc1UVf-VE", trial["item_id"])
+        self.assertEqual(NOW_MS, trial["created_at_unix_ms"])
+
+        get_status, get_payload, _ = self.request(
+            "GET",
+            f"/v1/youtube-trials/{trial['id']}",
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(200, get_status)
+        self.assertEqual(trial, get_payload["trial"])
+
+    def test_youtube_control_trial_replay_is_idempotent(self) -> None:
+        first_status, first_payload, _ = self.post_youtube_trial()
+        self.clock.value = NOW_MS + 60_000
+        second_status, second_payload, second_headers = self.post_youtube_trial()
+
+        self.assertEqual(201, first_status)
+        self.assertEqual(200, second_status)
+        self.assertEqual(first_payload, second_payload)
+        self.assertEqual("true", second_headers["idempotency-replayed"])
+
+    def test_youtube_control_trial_validates_item_type_and_id(self) -> None:
+        playlist_status, _, _ = self.post_youtube_trial(
+            "playlist",
+            self.youtube_trial_body(item_type="playlist", item_id="PL1234567890"),
+        )
+        type_status, type_payload, _ = self.post_youtube_trial(
+            "bad-type",
+            self.youtube_trial_body(item_type="audio"),
+        )
+        url_status, url_payload, _ = self.post_youtube_trial(
+            "url",
+            self.youtube_trial_body(item_id="https://youtube.com/watch?v=M7lc1UVf-VE"),
+        )
+
+        self.assertEqual(201, playlist_status)
+        self.assertEqual(422, type_status)
+        self.assertEqual("validation_error", type_payload["error"]["code"])
+        self.assertEqual(422, url_status)
+        self.assertEqual("validation_error", url_payload["error"]["code"])
+
+    def test_youtube_control_trial_rejects_invalid_fields_and_values(self) -> None:
+        extra_status, extra_payload, _ = self.post_youtube_trial(
+            "extra",
+            self.youtube_trial_body(media_url="https://example.test/audio"),
+        )
+        bool_status, bool_payload, _ = self.post_youtube_trial(
+            "bool",
+            self.youtube_trial_body(requested_position_ms=True),
+        )
+        list_status, list_payload, _ = self.post_youtube_trial(
+            "list-type",
+            self.youtube_trial_body(item_type=[]),
+        )
+
+        self.assertEqual(422, extra_status)
+        self.assertEqual("validation_error", extra_payload["error"]["code"])
+        self.assertEqual(422, bool_status)
+        self.assertEqual("validation_error", bool_payload["error"]["code"])
+        self.assertEqual(422, list_status)
+        self.assertEqual("validation_error", list_payload["error"]["code"])
+
+    def test_youtube_control_trial_enforces_lead_time_and_idempotency(self) -> None:
+        self.post_youtube_trial()
+        conflict_status, conflict_payload, _ = self.post_youtube_trial(
+            body=self.youtube_trial_body(requested_position_ms=100),
+        )
+        early_status, early_payload, _ = self.post_youtube_trial(
+            "early-youtube",
+            self.youtube_trial_body(effective_at_unix_ms=NOW_MS + 1_999),
+        )
+        late_status, late_payload, _ = self.post_youtube_trial(
+            "late-youtube",
+            self.youtube_trial_body(effective_at_unix_ms=NOW_MS + 30_001),
+        )
+
+        self.assertEqual(409, conflict_status)
+        self.assertEqual("idempotency_conflict", conflict_payload["error"]["code"])
+        self.assertEqual(422, early_status)
+        self.assertEqual("effective_time_out_of_range", early_payload["error"]["code"])
+        self.assertEqual(422, late_status)
+        self.assertEqual("effective_time_out_of_range", late_payload["error"]["code"])
 
     def test_idempotency_key_reuse_with_different_payload_conflicts(self) -> None:
         self.post_trial()

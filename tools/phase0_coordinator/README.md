@@ -1,6 +1,10 @@
 # Phase 0 LAN coordinator
 
-This stdlib-only server gives two phones a shared clock sample and trial record. It stores only an asset label, SHA-256 digest, playback position, and timing metadata in memory. It has no route or code path for audio files, URLs, redirects, downloads, or proxying.
+This stdlib-only server gives two phones a shared clock sample and trial record.
+Licensed-audio trials store an asset label and SHA-256 digest. YouTube control
+trials store only an official item ID and timing metadata. The server has no
+route or code path for audio files, media URLs, redirects, downloads, or
+proxying.
 
 Use Python 3.10 or newer from the repository root.
 
@@ -57,6 +61,23 @@ The effective time must be 2,000 through 30,000 ms after the server receives the
 ```
 
 Both phones fetch the record with `GET /v1/trials/{id}`. Errors are JSON under an `error` object.
+
+`POST /v1/youtube-trials` uses the same authentication, idempotency, position,
+and lead-time rules. It carries control data only.
+
+```json
+{
+  "item_type": "video",
+  "item_id": "M7lc1UVf-VE",
+  "requested_position_ms": 0,
+  "effective_at_unix_ms": 1786899005000
+}
+```
+
+`item_type` is `video` or `playlist`. `item_id` must be the matching official
+YouTube identifier, not a URL. Both phones fetch the record with
+`GET /v1/youtube-trials/{id}`. YouTube audiovisual content never enters this
+server.
 
 Request lines are limited to 4,096 bytes, targets to 2,048 bytes, headers to 8,192 bytes, and JSON bodies to 4,096 bytes. Logs contain only a normalized route, method, status, and response size. They exclude authorization values, query values, bodies, asset identifiers, and trial identifiers.
 
