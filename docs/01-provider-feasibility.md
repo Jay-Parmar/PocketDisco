@@ -1,6 +1,7 @@
 # Provider feasibility and policy gates
 
-Status checked: 2026-08-16. Provider terms and APIs change; re-check before each release.
+Provider baseline checked: 2026-08-16. YouTube WebView requirements rechecked:
+2026-08-25. Provider terms and APIs change; re-check before each release.
 
 ## Feasibility matrix
 
@@ -36,10 +37,20 @@ The official IFrame API can cue/load videos or playlists, play, pause, seek, and
 - the app must not obscure branding, controls, metadata, related content, or ads;
 - background/minimized playback is prohibited;
 - automated/scripted playback may be blocked, so every participant needs an explicit initial play/readiness gesture;
-- the embed must send API-client identity/referrer signals;
+- an Android WebView must send an HTTPS Referer whose hostname matches the
+  installed application ID;
 - regional restrictions, unavailable items, different advertisements, and buffering can produce different timelines on different phones.
 
-Because advertisements cannot be suppressed and are not guaranteed to be identical, YouTube cannot honestly promise tight uninterrupted sync. Build a two-to-five-phone compliance proof and ask YouTube for guidance/audit before making it central to the product.
+The PocketDisco coordinator may carry an official video or playlist ID, a
+requested position, and a future control time. It must never receive a YouTube
+media URL, cookie, header, audio stream, or video stream. Each phone must fetch
+the media independently through its own visible official player.
+
+Because advertisements cannot be suppressed and are not guaranteed to be
+identical, YouTube cannot honestly promise tight uninterrupted sync. Current
+policy does not explicitly approve multi-user scheduled control. Build a
+two-to-five-phone compliance proof and ask YouTube for guidance or an audit
+before making it central to the product.
 
 ## Apple Music: plausible, not pre-approved
 
@@ -67,4 +78,3 @@ Do not add arbitrary user uploads until there are clear grants of rights, conten
 6. Playback position and seek precision are sufficient for the product target.
 7. App review/quota/partner access is realistically attainable.
 8. Provider outage, unavailable-track, region, explicit-content, and child-user behavior is designed.
-
