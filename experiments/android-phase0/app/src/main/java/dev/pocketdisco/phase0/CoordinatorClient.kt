@@ -71,6 +71,36 @@ class CoordinatorClient(
         return parseTrial(body.getJSONObject("trial"))
     }
 
+    fun createYouTubeTrial(
+        trial: YouTubeControlTrialRequest,
+        idempotencyKey: String,
+    ): YouTubeControlTrial {
+        require(IDEMPOTENCY_KEY.matches(idempotencyKey)) { "Invalid idempotency key" }
+        val requestBody = JSONObject()
+            .put("item_type", trial.itemType.wireValue)
+            .put("item_id", trial.itemId)
+            .put("requested_position_ms", trial.requestedPositionMs)
+            .put("effective_at_unix_ms", trial.effectiveAtUnixMs)
+            .toString()
+        val body = request(
+            method = "POST",
+            path = "/v1/youtube-trials",
+            body = requestBody,
+            extraHeaders = mapOf("Idempotency-Key" to idempotencyKey),
+        )
+        return parseYouTubeTrial(body.getJSONObject("trial"))
+    }
+
+    fun getYouTubeTrial(trialId: String): YouTubeControlTrial {
+        val normalizedId = try {
+            UUID.fromString(trialId.trim()).toString()
+        } catch (_: IllegalArgumentException) {
+            throw IllegalArgumentException("Enter a valid YouTube trial UUID")
+        }
+        val body = request(method = "GET", path = "/v1/youtube-trials/$normalizedId")
+        return parseYouTubeTrial(body.getJSONObject("trial"))
+    }
+
     private fun request(
         method: String,
         path: String,
@@ -115,6 +145,15 @@ class CoordinatorClient(
         id = UUID.fromString(trial.getString("id")).toString(),
         assetId = trial.getString("asset_id"),
         assetSha256 = ProbeInput.assetSha256(trial.getString("asset_sha256")),
+        requestedPositionMs = trial.getLong("requested_position_ms"),
+        effectiveAtUnixMs = trial.getLong("effective_at_unix_ms"),
+        createdAtUnixMs = trial.getLong("created_at_unix_ms"),
+    )
+
+    private fun parseYouTubeTrial(trial: JSONObject): YouTubeControlTrial = YouTubeControlTrial.parse(
+        id = trial.getString("id"),
+        itemType = trial.getString("item_type"),
+        itemId = trial.getString("item_id"),
         requestedPositionMs = trial.getLong("requested_position_ms"),
         effectiveAtUnixMs = trial.getLong("effective_at_unix_ms"),
         createdAtUnixMs = trial.getLong("created_at_unix_ms"),
