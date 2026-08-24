@@ -316,8 +316,12 @@ class YouTubeActivity : Activity() {
                 status.text = "Player ready. Cue media, then tap Ready to play below the player."
             }
             "user_ready_gesture" -> {
+                playButton.isEnabled = false
+                status.text = "Priming playback with the direct WebView gesture"
+            }
+            "playback_armed" -> {
                 playButton.isEnabled = true
-                status.text = "Readiness confirmed by direct WebView gesture"
+                status.text = "Playback armed. Native Play is available."
             }
             "readiness_reset", "autoplay_blocked" -> {
                 playButton.isEnabled = false

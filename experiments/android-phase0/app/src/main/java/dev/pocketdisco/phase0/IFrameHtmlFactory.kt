@@ -27,6 +27,9 @@ object IFrameHtmlFactory {
             let player = null;
             let iframeReady = false;
             let explicitReady = false;
+            let armPending = false;
+            let playbackArmed = false;
+            let preparedStartSeconds = 0;
             let lastVideoId = '';
             let lastPlaylistIndex = -1;
 
@@ -44,11 +47,15 @@ object IFrameHtmlFactory {
             function updateReadyButton() {
               const button = document.getElementById('ready');
               button.disabled = !iframeReady;
-              button.textContent = explicitReady ? 'Ready confirmed' : 'Ready to play';
+              button.textContent = playbackArmed
+                ? 'Playback armed'
+                : armPending ? 'Arming playback' : 'Ready to play';
             }
 
             function resetReadiness(reason) {
               explicitReady = false;
+              armPending = false;
+              playbackArmed = false;
               updateReadyButton();
               report('readiness_reset', { reason });
             }
@@ -74,6 +81,8 @@ object IFrameHtmlFactory {
             document.getElementById('ready').addEventListener('click', function () {
               if (!player || !iframeReady) return;
               explicitReady = true;
+              armPending = true;
+              playbackArmed = false;
               updateReadyButton();
               report('user_ready_gesture', {});
               player.playVideo();
@@ -96,6 +105,14 @@ object IFrameHtmlFactory {
                     report('iframe_ready', {});
                   },
                   onStateChange: function (event) {
+                    if (event.data === YT.PlayerState.PLAYING && armPending) {
+                      armPending = false;
+                      playbackArmed = true;
+                      player.pauseVideo();
+                      player.seekTo(preparedStartSeconds, true);
+                      updateReadyButton();
+                      report('playback_armed', { start_seconds: preparedStartSeconds });
+                    }
                     report('player_state', { state: event.data });
                     observeItem('state_' + event.data);
                   },
@@ -107,6 +124,8 @@ object IFrameHtmlFactory {
                   },
                   onAutoplayBlocked: function () {
                     explicitReady = false;
+                    armPending = false;
+                    playbackArmed = false;
                     updateReadyButton();
                     report('autoplay_blocked', {});
                   }
@@ -118,6 +137,8 @@ object IFrameHtmlFactory {
               cueVideo: function (videoId, startSeconds) {
                 if (!player || !iframeReady) return;
                 resetReadiness('cue_video');
+                startSeconds = Number.isFinite(startSeconds) && startSeconds >= 0 ? startSeconds : 0;
+                preparedStartSeconds = startSeconds;
                 lastVideoId = '';
                 lastPlaylistIndex = -1;
                 player.cueVideoById({ videoId: videoId, startSeconds: startSeconds });
@@ -126,6 +147,8 @@ object IFrameHtmlFactory {
               cuePlaylist: function (playlistId, startSeconds) {
                 if (!player || !iframeReady) return;
                 resetReadiness('cue_playlist');
+                startSeconds = Number.isFinite(startSeconds) && startSeconds >= 0 ? startSeconds : 0;
+                preparedStartSeconds = startSeconds;
                 lastVideoId = '';
                 lastPlaylistIndex = -1;
                 player.cuePlaylist({ listType: 'playlist', list: playlistId, index: 0, startSeconds: startSeconds });
@@ -133,7 +156,7 @@ object IFrameHtmlFactory {
               },
               play: function () {
                 if (!player || !iframeReady) return;
-                if (!explicitReady) {
+                if (!explicitReady || !playbackArmed) {
                   report('play_blocked_not_ready', {});
                   return;
                 }
