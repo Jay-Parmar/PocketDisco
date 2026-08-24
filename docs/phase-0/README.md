@@ -11,6 +11,7 @@ testing documents.
 - [Two-phone Media3 test protocol](two-phone-test-protocol.md)
 - [Visible YouTube experiment protocol](youtube-experiment-protocol.md)
 - [Phase 0 gate checklist](gate-checklist.md)
+- [Physical-device smoke probe records](device-runs/)
 
 ## Scope
 

@@ -25,7 +25,7 @@ Mark these only after inspecting the repository revision under test.
 
 | ID | Code artifact | Status | Repository path and commit | Test result |
 |---|---|---|---|---|
-| `P0-CODE-01` | Throwaway Android Media3 harness builds and installs on both phones | `Pending` | `experiments/android-phase0` | APK builds locally; installs on two phones are pending |
+| `P0-CODE-01` | Throwaway Android Media3 harness builds and installs on both phones | `Pending` | `experiments/android-phase0` at `3fa6432`; [one-phone smoke probe](device-runs/2026-08-24-nothing-a142.md) | APK builds and installs on one Nothing A142; the second phone is pending |
 | `P0-CODE-02` | Native monotonic scheduling, preload, ready, and structured event logging are implemented | `Pass` | `experiments/android-phase0` at `481c4ee` | 18 unit tests passed; lint reported no issues |
 | `P0-CODE-03` | The harness loads owned or licensed MP4/AAC from a media origin separate from the control endpoint | `Pending` | `experiments/android-phase0` | Code enforces separate HTTPS media input; licensed device run is pending |
 | `P0-CODE-04` | Repeatable skew calculation reports attempts, failures, median, nearest-rank p95, and maximum | `Pass` | `tools/sync_analysis` at `481c4ee` | 19 unit tests passed, including Android playback export pairing |
@@ -36,6 +36,12 @@ Local validation completed at `2026-08-18T19:01:25Z`. The debug APK was
 3,737,189 bytes with SHA-256
 `cc4d50ae3514416012cd77d6f917cb847f67f25718f369131aaaeec6b16f4fdc`.
 The APK is a local build output and is not committed.
+
+A one-phone physical-device smoke probe completed on `2026-08-24` at `3fa6432`.
+Installation, lifecycle, validation, coordinator clock sampling, and partial
+YouTube behavior were exercised. No licensed media playback, two-phone start, or
+acoustic measurement occurred, so all physical-device gates remain `Pending`.
+See the [sanitized run record](device-runs/2026-08-24-nothing-a142.md).
 
 ## 3. External and rights evidence
 
