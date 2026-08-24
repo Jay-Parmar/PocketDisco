@@ -26,6 +26,7 @@ object IFrameHtmlFactory {
             const configuredOrigin = __ORIGIN__;
             let player = null;
             let iframeReady = false;
+            let itemPrepared = false;
             let explicitReady = false;
             let armPending = false;
             let playbackArmed = false;
@@ -46,13 +47,16 @@ object IFrameHtmlFactory {
 
             function updateReadyButton() {
               const button = document.getElementById('ready');
-              button.disabled = !iframeReady;
-              button.textContent = playbackArmed
+              button.disabled = !iframeReady || !itemPrepared || armPending || playbackArmed;
+              button.textContent = !itemPrepared
+                ? 'Waiting for media'
+                : playbackArmed
                 ? 'Playback armed'
                 : armPending ? 'Arming playback' : 'Ready to play';
             }
 
             function resetReadiness(reason) {
+              itemPrepared = false;
               explicitReady = false;
               armPending = false;
               playbackArmed = false;
@@ -79,7 +83,7 @@ object IFrameHtmlFactory {
             }
 
             document.getElementById('ready').addEventListener('click', function () {
-              if (!player || !iframeReady) return;
+              if (!player || !iframeReady || !itemPrepared || armPending || playbackArmed) return;
               explicitReady = true;
               armPending = true;
               playbackArmed = false;
@@ -105,6 +109,11 @@ object IFrameHtmlFactory {
                     report('iframe_ready', {});
                   },
                   onStateChange: function (event) {
+                    if (event.data === YT.PlayerState.CUED) {
+                      itemPrepared = true;
+                      updateReadyButton();
+                      report('media_cued', { start_seconds: preparedStartSeconds });
+                    }
                     const arming = armPending;
                     if (event.data === YT.PlayerState.PLAYING && armPending) {
                       armPending = false;
@@ -121,6 +130,8 @@ object IFrameHtmlFactory {
                     report('playback_quality', { quality: event.data });
                   },
                   onError: function (event) {
+                    itemPrepared = false;
+                    updateReadyButton();
                     report('player_error', { code: event.data });
                   },
                   onAutoplayBlocked: function () {
