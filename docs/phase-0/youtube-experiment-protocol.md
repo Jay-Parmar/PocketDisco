@@ -12,7 +12,8 @@ provider permission or a production integration.
 Before each run, verify:
 
 - [ ] The official IFrame Player API runs in a supported Android WebView.
-- [ ] API client identity and referrer signals are configured.
+- [ ] The WebView sends an HTTPS Referer whose hostname matches the installed
+  application ID.
 - [ ] The audiovisual player is visible and at least 200 by 200 CSS pixels while
   playing.
 - [ ] No overlay obscures controls, branding, metadata, related content, or ads.
@@ -59,8 +60,8 @@ browser policy event, but it is not proof that the event cannot occur.
 | ID | Case | Procedure | Required evidence |
 |---|---|---|---|
 | `YT-01` | Visible player | Load the same official test item on both phones. Inspect size, visibility, controls, branding, metadata, related content, and ad surfaces. | Dimensions, configuration, state events, compliance checklist |
-| `YT-02` | Explicit readiness | Start a fresh session. Require a local tap from each participant before cue or play eligibility. | Gesture timestamp and ready state per phone |
-| `YT-03` | Coordinated play | After both readiness gestures, cue the same item and issue a future-effective play command to both visible players. Sample current time and state. | Command time, state timeline, buffering, descriptive playhead skew |
+| `YT-02` | Explicit readiness | Start a fresh session and cue the item. Require a local tap from each participant before play eligibility. | Gesture timestamp and ready state per phone |
+| `YT-03` | Coordinated play | Create or fetch the same future-effective control trial on both phones. After both players are cued, arm each visible player with its local readiness gesture. Sample current time and state through the scheduled start. | Trial ID, command time, state timeline, buffering, descriptive playhead skew |
 | `YT-04` | Pause and seek | While both players stay visible, issue pause, then seek, then play commands. Record state and current time until both settle. | Command and state timeline, errors, divergence |
 | `YT-05` | Autoplay blocked | In a fresh context, attempt the documented condition that may trigger `onAutoplayBlocked`. Never add a bypass. If triggered, use the visible local recovery prompt. | Event or `Not observed`, prompt behavior, recovery gesture |
 | `YT-06` | Advertisements | Observe runs long enough for naturally served ads. Do not influence, skip, hide, or normalize them. | Per-phone ad occurrence and timing as operator notes, divergence outcome |

@@ -50,13 +50,26 @@ The default analyzer gate uses `acoustic_onset`. Those timestamps must be annota
 
 1. Initialize the official IFrame player.
 2. Cue a public test video or playlist by official ID.
-3. Tap the `Ready to play` button directly below the visible player. This is the required participant gesture.
-4. Exercise play, pause, seek, app switching, screen lock, advertisements, unavailable items, and playlist transitions.
-5. Export telemetry from each phone.
+3. Enter the temporary coordinator URL and bearer token on both phones, then
+   take seven time samples on each phone.
+4. Create a control trial on one phone. Copy its UUID to the other phone and
+   fetch it there. The trial contains only the item type, item ID, requested
+   position, and future effective time.
+5. After the item is cued, tap `Ready to play` directly below the visible player
+   on each phone. This is the required participant gesture. If either phone
+   reports autoplay blocked or misses the start window, create a new trial.
+6. Exercise play, pause, seek, app switching, screen lock, advertisements,
+   unavailable items, and playlist transitions.
+7. Export telemetry from each phone.
 
 The WebView keeps standard YouTube controls, branding, metadata, related content, and ads intact. It never hides or overlays the player. Playback is paused when the activity leaves the foreground and never resumes automatically. `onAutoplayBlocked`, lifecycle, screen state, position, error, and playlist-transition events are recorded.
 
 The local HTML uses the installed Android application ID as its HTTPS base URL
 and IFrame origin so the WebView sends the required app identity as its Referer.
+
+The coordinator never receives a YouTube media URL or media bytes. Each phone
+streams independently from its own visible official IFrame player. A one-phone
+coordinator run checks the request and scheduling path, but it cannot establish
+cross-device synchronization.
 
 YouTube output is experimental and best effort. Different ads, availability, buffering, and playlist behavior can prevent tight synchronization.
