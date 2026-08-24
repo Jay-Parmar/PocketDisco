@@ -1,9 +1,9 @@
 package dev.pocketdisco.phase0
 
 object IFrameHtmlFactory {
-    fun create(origin: String): String {
-        val normalizedOrigin = ProbeInput.webOrigin(origin)
-        return HTML.replace("__ORIGIN__", JsonString.quote(normalizedOrigin))
+    fun create(applicationId: String): String {
+        val origin = ProbeInput.youtubeAppOrigin(applicationId)
+        return HTML.replace("__ORIGIN__", JsonString.quote(origin))
     }
 
     private val HTML = """

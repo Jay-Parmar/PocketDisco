@@ -7,8 +7,9 @@ import org.junit.Test
 class IFrameHtmlFactoryTest {
     @Test
     fun keepsRequiredControlsAndReadinessHandling() {
-        val html = IFrameHtmlFactory.create("https://probe.example.test")
+        val html = IFrameHtmlFactory.create("dev.pocketdisco.phase0")
 
+        assertTrue(html.contains("const configuredOrigin = \"https://dev.pocketdisco.phase0\""))
         assertTrue(html.contains("origin: configuredOrigin"))
         assertTrue(html.contains("controls: 1"))
         assertTrue(html.contains("onAutoplayBlocked"))

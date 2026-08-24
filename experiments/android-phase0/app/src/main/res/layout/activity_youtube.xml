@@ -20,7 +20,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
-        android:text="Initialize with a controlled HTTPS origin. Playback is foreground-only and best effort."
+        android:text="The installed app ID identifies this visible foreground player. Playback is best effort."
         android:textSize="13sp" />
 
     <WebView
@@ -56,13 +56,6 @@
                 android:layout_height="wrap_content"
                 android:hint="Shared trial ID"
                 android:inputType="text" />
-
-            <EditText
-                android:id="@+id/web_origin"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="Controlled HTTPS origin"
-                android:inputType="textUri" />
 
             <Button
                 android:id="@+id/initialize_youtube"

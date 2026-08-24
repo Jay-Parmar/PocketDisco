@@ -23,17 +23,20 @@ class ProbeInputTest {
     }
 
     @Test
-    fun normalizesWebOrigin() {
-        assertEquals("https://example.test:8443", ProbeInput.webOrigin("HTTPS://Example.Test:8443/"))
+    fun buildsYouTubeOriginFromApplicationId() {
+        assertEquals(
+            "https://dev.pocketdisco.phase0",
+            ProbeInput.youtubeAppOrigin("dev.pocketdisco.phase0"),
+        )
     }
 
     @Test
-    fun rejectsOriginPathAndCredentials() {
+    fun rejectsInvalidYouTubeApplicationIds() {
         assertThrows(IllegalArgumentException::class.java) {
-            ProbeInput.webOrigin("https://example.test/embed")
+            ProbeInput.youtubeAppOrigin("PocketDisco")
         }
         assertThrows(IllegalArgumentException::class.java) {
-            ProbeInput.webOrigin("https://user@example.test")
+            ProbeInput.youtubeAppOrigin("dev.pocket-disco.phase0")
         }
     }
 

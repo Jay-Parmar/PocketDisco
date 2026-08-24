@@ -7,6 +7,7 @@ object ProbeInput {
     private val videoIdPattern = Regex("^[A-Za-z0-9_-]{11}$")
     private val playlistIdPattern = Regex("^[A-Za-z0-9_-]{10,100}$")
     private val assetSha256Pattern = Regex("^[A-Fa-f0-9]{64}$")
+    private val applicationIdPattern = Regex("^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$")
 
     fun licensedAssetUrl(value: String): String {
         val uri = parseHttps(value, allowPath = true)
@@ -18,19 +19,9 @@ object ProbeInput {
         return uri.toASCIIString()
     }
 
-    fun webOrigin(value: String): String {
-        val uri = parseHttps(value, allowPath = false)
-        require(uri.userInfo == null) { "Origin must not contain user information" }
-        require(uri.query == null && uri.fragment == null) { "Origin must not contain a query or fragment" }
-        return buildString {
-            append("https://")
-            append(uri.host.lowercase(Locale.US))
-            if (uri.port != -1) {
-                append(':')
-                append(uri.port)
-            }
-        }
-    }
+    fun youtubeAppOrigin(value: String): String = value.trim().also {
+        require(applicationIdPattern.matches(it)) { "YouTube requires a valid installed application ID" }
+    }.let { "https://$it" }
 
     fun videoId(value: String): String = value.trim().also {
         require(videoIdPattern.matches(it)) { "Enter an 11-character YouTube video ID" }

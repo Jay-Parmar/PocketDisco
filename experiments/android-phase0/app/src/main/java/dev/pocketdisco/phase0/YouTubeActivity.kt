@@ -30,7 +30,6 @@ class YouTubeActivity : Activity() {
     private lateinit var webView: WebView
     private lateinit var deviceLabel: EditText
     private lateinit var trialId: EditText
-    private lateinit var webOrigin: EditText
     private lateinit var videoId: EditText
     private lateinit var playlistId: EditText
     private lateinit var seekSeconds: EditText
@@ -136,7 +135,6 @@ class YouTubeActivity : Activity() {
         webView = findViewById(R.id.youtube_webview)
         deviceLabel = findViewById(R.id.device_label)
         trialId = findViewById(R.id.trial_id)
-        webOrigin = findViewById(R.id.web_origin)
         videoId = findViewById(R.id.video_id)
         playlistId = findViewById(R.id.playlist_id)
         seekSeconds = findViewById(R.id.seek_seconds)
@@ -204,7 +202,8 @@ class YouTubeActivity : Activity() {
     private fun wireControls() {
         findViewById<Button>(R.id.initialize_youtube).setOnClickListener {
             runInputAction {
-                val origin = ProbeInput.webOrigin(webOrigin.text.toString())
+                val applicationId = packageName
+                val origin = ProbeInput.youtubeAppOrigin(applicationId)
                 playerInitialized = true
                 iframeReady = false
                 playButton.isEnabled = false
@@ -212,11 +211,11 @@ class YouTubeActivity : Activity() {
                 record(
                     category = "youtube",
                     name = "player_initializing",
-                    detail = "origin_host=${Uri.parse(origin).host.orEmpty()}",
+                    detail = "app_id=$applicationId",
                 )
                 webView.loadDataWithBaseURL(
                     "$origin/",
-                    IFrameHtmlFactory.create(origin),
+                    IFrameHtmlFactory.create(applicationId),
                     "text/html",
                     Charsets.UTF_8.name(),
                     null,

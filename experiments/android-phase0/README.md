@@ -8,7 +8,6 @@ This is a throwaway native Android experiment. It is not the React Native produc
 - Android SDK 36
 - Two Android devices on ordinary Wi-Fi
 - An HTTPS MP4 or M4A asset that the team owns or is licensed to stream to each participant
-- A controlled HTTPS origin for the YouTube IFrame API test
 - The temporary LAN coordinator in `../../tools/phase0_coordinator` for the preferred timing path
 
 No audio asset, provider credential, signed URL, or user token belongs in this repository.
@@ -49,12 +48,15 @@ The default analyzer gate uses `acoustic_onset`. Those timestamps must be annota
 
 ## YouTube trial
 
-1. Enter a controlled HTTPS origin and initialize the official IFrame player.
+1. Initialize the official IFrame player.
 2. Cue a public test video or playlist by official ID.
 3. Tap the `Ready to play` button directly below the visible player. This is the required participant gesture.
 4. Exercise play, pause, seek, app switching, screen lock, advertisements, unavailable items, and playlist transitions.
 5. Export telemetry from each phone.
 
 The WebView keeps standard YouTube controls, branding, metadata, related content, and ads intact. It never hides or overlays the player. Playback is paused when the activity leaves the foreground and never resumes automatically. `onAutoplayBlocked`, lifecycle, screen state, position, error, and playlist-transition events are recorded.
+
+The local HTML uses the installed Android application ID as its HTTPS base URL
+and IFrame origin so the WebView sends the required app identity as its Referer.
 
 YouTube output is experimental and best effort. Different ads, availability, buffering, and playlist behavior can prevent tight synchronization.
