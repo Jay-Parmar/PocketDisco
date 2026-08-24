@@ -20,11 +20,7 @@ object YouTubeStartPlanner {
         nowElapsedRealtimeMs: Long,
         state: YouTubeStartState,
     ): YouTubeStartPlan {
-        require(state.iframeReady) { "YouTube IFrame is not ready" }
-        require(state.playbackArmed) { "YouTube playback needs a direct readiness gesture" }
-        require(state.activityResumed) { "YouTube activity is not in the foreground" }
-        require(state.windowFocused) { "YouTube activity does not have focus" }
-        require(state.preparedTrialId == trial.id) { "A different YouTube trial is prepared" }
+        requireReady(trial, state)
         val targetElapsedRealtimeMs = clock.elapsedRealtimeForServerUnix(trial.effectiveAtUnixMs)
         require(targetElapsedRealtimeMs - nowElapsedRealtimeMs >= MIN_START_LEAD_MS) {
             "YouTube trial deadline is too close or already passed"
@@ -33,6 +29,14 @@ object YouTubeStartPlanner {
             targetElapsedRealtimeMs = targetElapsedRealtimeMs,
             requestedPositionMs = trial.requestedPositionMs,
         )
+    }
+
+    fun requireReady(trial: YouTubeControlTrial, state: YouTubeStartState) {
+        require(state.iframeReady) { "YouTube IFrame is not ready" }
+        require(state.playbackArmed) { "YouTube playback needs a direct readiness gesture" }
+        require(state.activityResumed) { "YouTube activity is not in the foreground" }
+        require(state.windowFocused) { "YouTube activity does not have focus" }
+        require(state.preparedTrialId == trial.id) { "A different YouTube trial is prepared" }
     }
 
     private const val MIN_START_LEAD_MS = 500L

@@ -23,6 +23,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
+import org.json.JSONObject
 import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.math.roundToLong
@@ -46,13 +47,19 @@ class YouTubeActivity : Activity() {
     private lateinit var syncClockButton: Button
     private lateinit var createTrialButton: Button
     private lateinit var fetchTrialButton: Button
+    private lateinit var startScheduler: MonotonicScheduler
     private val networkExecutor = Executors.newSingleThreadExecutor()
     private var playerInitialized = false
     private var iframeReady = false
     private var screenReceiverRegistered = false
+    private var activityResumed = false
+    private var windowFocused = false
+    private var playbackArmed = false
     private var clockEstimate: ClockEstimate? = null
     private var clockBaseUrl: String? = null
     private var pendingYouTubeTrial: YouTubeControlTrial? = null
+    private var activeYouTubeTarget: CoordinationTarget? = null
+    private var scheduledCommandSent = false
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -63,7 +70,10 @@ class YouTubeActivity : Activity() {
                 else -> "screen_unknown"
             }
             record(category = "screen", name = eventName)
-            if (intent?.action == Intent.ACTION_SCREEN_OFF) pausePlayer("screen_off")
+            if (intent?.action == Intent.ACTION_SCREEN_OFF) {
+                cancelScheduledTrial("screen_off")
+                pausePlayer("screen_off")
+            }
         }
     }
 
@@ -72,6 +82,7 @@ class YouTubeActivity : Activity() {
         setContentView(R.layout.activity_youtube)
         bindViews()
         recorder = TelemetryRecorder(System::currentTimeMillis, SystemClock::elapsedRealtime)
+        startScheduler = MonotonicScheduler(SystemClock::elapsedRealtime)
         configureWebView()
         wireControls()
         record(category = "lifecycle", name = "activity_created")
@@ -85,11 +96,14 @@ class YouTubeActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        activityResumed = true
         if (::webView.isInitialized) webView.onResume()
         if (::recorder.isInitialized) record(category = "lifecycle", name = "activity_resumed")
     }
 
     override fun onPause() {
+        activityResumed = false
+        cancelScheduledTrial("activity_paused")
         if (::recorder.isInitialized) record(category = "lifecycle", name = "activity_paused")
         pausePlayer("activity_paused")
         if (::webView.isInitialized) webView.onPause()
@@ -110,6 +124,8 @@ class YouTubeActivity : Activity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
+        windowFocused = hasFocus
+        if (!hasFocus) cancelScheduledTrial("window_focus_lost")
         if (::recorder.isInitialized) {
             record(category = "lifecycle", name = "window_focus", detail = "has_focus=$hasFocus")
         }
@@ -117,6 +133,7 @@ class YouTubeActivity : Activity() {
 
     override fun onDestroy() {
         unregisterScreenReceiver()
+        if (::startScheduler.isInitialized) startScheduler.cancel()
         networkExecutor.shutdownNow()
         if (::recorder.isInitialized) record(category = "lifecycle", name = "activity_destroyed")
         if (::webView.isInitialized) {
@@ -228,6 +245,8 @@ class YouTubeActivity : Activity() {
                 val origin = ProbeInput.youtubeAppOrigin(applicationId)
                 playerInitialized = true
                 iframeReady = false
+                playbackArmed = false
+                cancelScheduledTrial("player_reinitialized")
                 pendingYouTubeTrial = null
                 playButton.isEnabled = false
                 status.text = "Loading official YouTube IFrame player"
@@ -248,6 +267,8 @@ class YouTubeActivity : Activity() {
         findViewById<Button>(R.id.cue_video).setOnClickListener {
             runInputAction {
                 val id = ProbeInput.videoId(videoId.text.toString())
+                playbackArmed = false
+                cancelScheduledTrial("manual_video_cue")
                 pendingYouTubeTrial = null
                 evaluate("window.phase0.cueVideo(${JsonString.quote(id)}, 0);")
             }
@@ -255,6 +276,8 @@ class YouTubeActivity : Activity() {
         findViewById<Button>(R.id.cue_playlist).setOnClickListener {
             runInputAction {
                 val id = ProbeInput.playlistId(playlistId.text.toString())
+                playbackArmed = false
+                cancelScheduledTrial("manual_playlist_cue")
                 pendingYouTubeTrial = null
                 evaluate("window.phase0.cuePlaylist(${JsonString.quote(id)}, 0);")
             }
@@ -400,6 +423,8 @@ class YouTubeActivity : Activity() {
             require(targetElapsed - SystemClock.elapsedRealtime() >= MINIMUM_PREPARE_LEAD_MS) {
                 "YouTube trial start is too close or has passed"
             }
+            cancelScheduledTrial("trial_replaced")
+            playbackArmed = false
             pendingYouTubeTrial = trial
             coordinatorTrialId.setText(trial.id)
             trialId.setText(trial.id)
@@ -528,14 +553,23 @@ class YouTubeActivity : Activity() {
                 status.text = "Player ready. Cue media, then tap Ready to play below the player."
             }
             "user_ready_gesture" -> {
+                playbackArmed = false
                 playButton.isEnabled = false
                 status.text = "Priming playback with the direct WebView gesture"
             }
             "playback_armed" -> {
-                playButton.isEnabled = true
-                status.text = "Playback armed. Native Play is available."
+                playbackArmed = true
+                if (pendingYouTubeTrial == null) {
+                    playButton.isEnabled = true
+                    status.text = "Playback armed. Native Play is available."
+                } else {
+                    playButton.isEnabled = false
+                    runInputAction(::schedulePendingYouTubeTrial)
+                }
             }
             "readiness_reset", "autoplay_blocked" -> {
+                playbackArmed = false
+                cancelScheduledTrial(safeName)
                 playButton.isEnabled = false
                 status.text = if (safeName == "autoplay_blocked") {
                     "Autoplay blocked. Tap Ready to play again."
@@ -543,16 +577,120 @@ class YouTubeActivity : Activity() {
                     "Media cued. Tap Ready to play below the player."
                 }
             }
-            "player_error" -> status.text = "YouTube reported a playback error. See telemetry."
+            "player_error" -> {
+                playbackArmed = false
+                cancelScheduledTrial("player_error")
+                status.text = "YouTube reported a playback error. See telemetry."
+            }
+            "player_state" -> recordScheduledPlaying(detail)
         }
     }
 
-    private fun record(category: String, name: String, detail: String = "") {
+    private fun schedulePendingYouTubeTrial() {
+        val trial = pendingYouTubeTrial ?: throw IllegalStateException("No YouTube trial is prepared")
+        val estimate = currentClockEstimate()
+        val plan = YouTubeStartPlanner.plan(
+            trial = trial,
+            clock = estimate,
+            nowElapsedRealtimeMs = SystemClock.elapsedRealtime(),
+            state = currentStartState(),
+        )
+        val target = CoordinationTarget(trial.effectiveAtUnixMs, plan.targetElapsedRealtimeMs)
+        activeYouTubeTarget = target
+        scheduledCommandSent = false
+        record(
+            category = "coordination",
+            name = "youtube_trial_scheduled",
+            targetWallTimeMs = target.wallTimeMs,
+            targetElapsedRealtimeMs = target.elapsedRealtimeMs,
+            detail = "trial_id=${trial.id};position_ms=${plan.requestedPositionMs}",
+        )
+        status.text = "Playback armed for trial ${trial.id.take(8)}"
+        startScheduler.scheduleAt(plan.targetElapsedRealtimeMs) { actualElapsedRealtimeMs ->
+            try {
+                YouTubeStartPlanner.requireReady(trial, currentStartState())
+                scheduledCommandSent = true
+                evaluate("window.phase0.play();")
+                record(
+                    category = "coordination",
+                    name = "youtube_play_command_sent",
+                    targetWallTimeMs = target.wallTimeMs,
+                    targetElapsedRealtimeMs = target.elapsedRealtimeMs,
+                    detail = "trial_id=${trial.id};actual_elapsed_ms=$actualElapsedRealtimeMs;" +
+                        "lateness_ms=${actualElapsedRealtimeMs - target.elapsedRealtimeMs}",
+                )
+                status.text = "Scheduled YouTube play command sent"
+            } catch (error: IllegalArgumentException) {
+                scheduledCommandSent = false
+                activeYouTubeTarget = null
+                record(
+                    category = "coordination",
+                    name = "youtube_trial_cancelled",
+                    detail = "trial_id=${trial.id};reason=execution_guard",
+                )
+                status.text = error.message ?: "Scheduled YouTube start cancelled"
+            }
+        }
+    }
+
+    private fun currentStartState() = YouTubeStartState(
+        iframeReady = iframeReady,
+        playbackArmed = playbackArmed,
+        activityResumed = activityResumed,
+        windowFocused = windowFocused,
+        preparedTrialId = pendingYouTubeTrial?.id,
+    )
+
+    private fun cancelScheduledTrial(reason: String) {
+        if (::startScheduler.isInitialized) startScheduler.cancel()
+        val trial = pendingYouTubeTrial
+        if (activeYouTubeTarget != null && !scheduledCommandSent && ::recorder.isInitialized) {
+            record(
+                category = "coordination",
+                name = "youtube_trial_cancelled",
+                detail = "trial_id=${trial?.id.orEmpty()};reason=$reason",
+            )
+        }
+        activeYouTubeTarget = null
+        scheduledCommandSent = false
+    }
+
+    private fun recordScheduledPlaying(detail: String) {
+        val target = activeYouTubeTarget ?: return
+        if (!scheduledCommandSent) return
+        val event = try {
+            JSONObject(detail)
+        } catch (_: Exception) {
+            return
+        }
+        if (event.optInt("state", -1) != 1 || event.optBoolean("arming", false)) return
+        val trial = pendingYouTubeTrial ?: return
+        record(
+            category = "coordination",
+            name = "youtube_trial_playing",
+            targetWallTimeMs = target.wallTimeMs,
+            targetElapsedRealtimeMs = target.elapsedRealtimeMs,
+            detail = "trial_id=${trial.id}",
+        )
+        activeYouTubeTarget = null
+        scheduledCommandSent = false
+        status.text = "YouTube trial playing"
+    }
+
+    private fun record(
+        category: String,
+        name: String,
+        detail: String = "",
+        targetWallTimeMs: Long? = null,
+        targetElapsedRealtimeMs: Long? = null,
+    ) {
         val event = recorder.record(
             deviceLabel = deviceLabel.text.toString(),
             trialId = trialId.text.toString(),
             category = category,
             name = name,
+            targetWallTimeMs = targetWallTimeMs,
+            targetElapsedRealtimeMs = targetElapsedRealtimeMs,
             detail = detail,
         )
         telemetryStatus.text = "${event.sequence}. ${event.category}/${event.name}\n${event.detail}"

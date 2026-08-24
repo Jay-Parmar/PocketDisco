@@ -61,6 +61,18 @@ class YouTubeStartPlannerTest {
         }
     }
 
+    @Test
+    fun validatesExecutionStateWithoutRequiringRemainingLead() {
+        YouTubeStartPlanner.requireReady(trial, readyState())
+
+        assertThrows(IllegalArgumentException::class.java) {
+            YouTubeStartPlanner.requireReady(
+                trial,
+                readyState().copy(windowFocused = false),
+            )
+        }
+    }
+
     private fun readyState() = YouTubeStartState(
         iframeReady = true,
         playbackArmed = true,

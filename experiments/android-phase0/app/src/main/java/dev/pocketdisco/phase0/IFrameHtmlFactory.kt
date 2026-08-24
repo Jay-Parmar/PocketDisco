@@ -105,6 +105,7 @@ object IFrameHtmlFactory {
                     report('iframe_ready', {});
                   },
                   onStateChange: function (event) {
+                    const arming = armPending;
                     if (event.data === YT.PlayerState.PLAYING && armPending) {
                       armPending = false;
                       playbackArmed = true;
@@ -113,7 +114,7 @@ object IFrameHtmlFactory {
                       updateReadyButton();
                       report('playback_armed', { start_seconds: preparedStartSeconds });
                     }
-                    report('player_state', { state: event.data });
+                    report('player_state', { state: event.data, arming: arming });
                     observeItem('state_' + event.data);
                   },
                   onPlaybackQualityChange: function (event) {

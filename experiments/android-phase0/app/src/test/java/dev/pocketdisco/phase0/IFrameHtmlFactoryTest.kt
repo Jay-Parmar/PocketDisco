@@ -18,6 +18,7 @@ class IFrameHtmlFactoryTest {
         assertTrue(html.contains("armPending"))
         assertTrue(html.contains("player.pauseVideo()"))
         assertTrue(html.contains("player.seekTo(preparedStartSeconds, true)"))
+        assertTrue(html.contains("arming: arming"))
         assertTrue(html.contains("playlist_transition"))
         assertTrue(html.contains("cueVideo: function (videoId, startSeconds)"))
         assertTrue(html.contains("cuePlaylist: function (playlistId, startSeconds)"))
