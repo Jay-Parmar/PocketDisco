@@ -1,12 +1,15 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace PocketDisco.WindowsMultiOutput;
 
 public sealed class CoordinatorClient : IDisposable
 {
+    private const long TrialLeadMilliseconds = 25_000;
     private const int MaximumBearerTokenLength = 128;
     private const int MaximumResponseBytes = 4_096;
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(3);
@@ -20,6 +23,8 @@ public sealed class CoordinatorClient : IDisposable
     private readonly HttpClient httpClient;
     private readonly AuthenticationHeaderValue authorization;
     private readonly Func<long> stopwatchTimestamp;
+    private readonly ConcurrentDictionary<string, long> creationTargets = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, CoordinatorTrial> createdTrials = new(StringComparer.Ordinal);
 
     public CoordinatorClient(string baseUrl, string bearerToken)
         : this(
@@ -93,8 +98,54 @@ public sealed class CoordinatorClient : IDisposable
             HttpMethod.Get,
             $"v1/trials/{trialId:D}",
             content: null,
-            root => ParseTrialResponse(root, trialId),
+            root => ParseTrialResponse(root, trialId, expectedEffectiveAt: null),
             cancellationToken);
+
+    public async Task<CoordinatorTrial> CreateTrialAsync(
+        CoordinatorClockEstimate clockEstimate,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(clockEstimate);
+        ValidateIdempotencyKey(idempotencyKey);
+        if (clockEstimate.SampleCount != CoordinatorClockEstimator.RequiredSampleCount
+            || clockEstimate.StopwatchFrequency <= 0)
+        {
+            throw new ArgumentException("A seven-sample clock estimate is required.", nameof(clockEstimate));
+        }
+
+        var effectiveAt = creationTargets.GetOrAdd(
+            idempotencyKey,
+            _ => CreateEffectiveTime(clockEstimate));
+        using var content = new ByteArrayContent(
+            JsonSerializer.SerializeToUtf8Bytes(
+                new CoordinatorTrialRequest(
+                    ToneGenerator.SignalId,
+                    ToneGenerator.PcmSha256,
+                    0,
+                    effectiveAt)));
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        var trial = await SendJsonAsync(
+            HttpMethod.Post,
+            "v1/trials",
+            content,
+            root => ParseTrialResponse(root, expectedTrialId: null, effectiveAt),
+            cancellationToken,
+            idempotencyKey);
+
+        if (createdTrials.TryGetValue(idempotencyKey, out var previous) && previous != trial)
+        {
+            throw new CoordinatorClientException("Coordinator returned an inconsistent replay.");
+        }
+
+        if (!createdTrials.TryAdd(idempotencyKey, trial)
+            && createdTrials[idempotencyKey] != trial)
+        {
+            throw new CoordinatorClientException("Coordinator returned an inconsistent replay.");
+        }
+
+        return trial;
+    }
 
     public void Dispose()
     {
@@ -106,7 +157,8 @@ public sealed class CoordinatorClient : IDisposable
         string path,
         HttpContent? content,
         Func<JsonElement, T> parse,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? idempotencyKey = null)
     {
         using var request = new HttpRequestMessage(method, path)
         {
@@ -114,6 +166,10 @@ public sealed class CoordinatorClient : IDisposable
         };
         request.Headers.Authorization = authorization;
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        if (idempotencyKey is not null)
+        {
+            request.Headers.Add("Idempotency-Key", idempotencyKey);
+        }
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(RequestTimeout);
 
@@ -204,7 +260,10 @@ public sealed class CoordinatorClient : IDisposable
         return new CoordinatorTimeResponse(serverReceive, serverSend);
     }
 
-    private static CoordinatorTrial ParseTrialResponse(JsonElement root, Guid expectedTrialId)
+    private static CoordinatorTrial ParseTrialResponse(
+        JsonElement root,
+        Guid? expectedTrialId,
+        long? expectedEffectiveAt)
     {
         RequireExactProperties(root, "trial");
         var trial = root.GetProperty("trial");
@@ -218,7 +277,8 @@ public sealed class CoordinatorClient : IDisposable
             "created_at_unix_ms");
 
         var idValue = ReadString(trial, "id");
-        if (!Guid.TryParseExact(idValue, "D", out var id) || id != expectedTrialId)
+        if (!Guid.TryParseExact(idValue, "D", out var id)
+            || (expectedTrialId.HasValue && id != expectedTrialId.Value))
         {
             throw new CoordinatorClientException("Coordinator returned invalid trial data.");
         }
@@ -231,7 +291,8 @@ public sealed class CoordinatorClient : IDisposable
         if (assetId != ToneGenerator.SignalId
             || assetSha256 != ToneGenerator.PcmSha256
             || requestedPosition != 0
-            || effectiveAt <= createdAt)
+            || effectiveAt <= createdAt
+            || (expectedEffectiveAt.HasValue && effectiveAt != expectedEffectiveAt.Value))
         {
             throw new CoordinatorClientException("Coordinator trial does not match the generated signal.");
         }
@@ -286,9 +347,38 @@ public sealed class CoordinatorClient : IDisposable
         return property.GetString()!;
     }
 
+    private long CreateEffectiveTime(CoordinatorClockEstimate clockEstimate)
+    {
+        var currentStopwatchMilliseconds = CoordinatorClockMath.TimestampToMilliseconds(
+            stopwatchTimestamp(),
+            clockEstimate.StopwatchFrequency);
+        var currentServerUnixMilliseconds = checked(
+            currentStopwatchMilliseconds + clockEstimate.ServerToStopwatchOffsetMilliseconds);
+        return checked(currentServerUnixMilliseconds + TrialLeadMilliseconds);
+    }
+
+    private static void ValidateIdempotencyKey(string value)
+    {
+        if (string.IsNullOrEmpty(value)
+            || value.Length > 128
+            || !char.IsAsciiLetterOrDigit(value[0])
+            || value.Any(character =>
+                !char.IsAsciiLetterOrDigit(character)
+                && character is not '.' and not '_' and not ':' and not '-'))
+        {
+            throw new ArgumentException("Coordinator idempotency key is invalid.", nameof(value));
+        }
+    }
+
     private sealed record CoordinatorTimeResponse(
         long ServerReceiveUnixMilliseconds,
         long ServerSendUnixMilliseconds);
+
+    private sealed record CoordinatorTrialRequest(
+        [property: JsonPropertyName("asset_id")] string AssetId,
+        [property: JsonPropertyName("asset_sha256")] string AssetSha256,
+        [property: JsonPropertyName("requested_position_ms")] long RequestedPositionMilliseconds,
+        [property: JsonPropertyName("effective_at_unix_ms")] long EffectiveAtUnixMilliseconds);
 }
 
 public sealed record CoordinatorTrial(
