@@ -6,6 +6,7 @@
 - A room has one provider and one canonical, revisioned playback timeline.
 - Commands are ordered and idempotent; presence and telemetry may be lossy.
 - Playback details live behind provider adapters.
+- Local endpoint routing lives behind a platform output adapter, separate from the provider adapter.
 - Time-critical scheduling and measurement run natively, not on the React Native JavaScript timer.
 - Start as a modular monolith. Split services only after measurements show a need.
 
@@ -15,6 +16,7 @@
 |---|---|---|
 | Android UI/product logic | React Native + TypeScript | Matches existing React/TS knowledge and preserves substantial Windows/UI reuse |
 | Android playback/timing | Kotlin Turbo Native Module | Provider SDKs, Media3, monotonic scheduling, lifecycle, and audio focus belong on the native side |
+| Windows feasibility audio | C#/.NET native proof | Enumerates Windows render endpoints and measures multi-endpoint timing before the product shell is chosen |
 | Client state | Zustand or Redux Toolkit, one choice only | Deterministic room reducer; easy event replay/debugging |
 | REST + realtime | FastAPI, Pydantic, WebSockets | Matches Python knowledge; one deployable codebase is enough for MVP |
 | Durable store | PostgreSQL | Users, rooms, membership, queue, chat, moderation, audit records |
@@ -163,6 +165,13 @@ interface PlaybackProvider {
 
 Capabilities must be truthful: `canSchedule`, `canSeek`, `canReportPosition`, `canRateAdjust`, `canBackground`, and accuracy/uncertainty. The room coordinator chooses behavior from capabilities rather than provider-name conditionals.
 
+The platform output adapter reports `single`, `system_group`, `app_fanout`, or
+`unsupported`. Endpoint selection remains local to each client and never enters
+the room control protocol. One application instance remains one room
+participant even when it renders to several local outputs. Windows uses its
+monotonic clock for room scheduling and native endpoint playback for local
+fanout.
+
 ## Scaling path
 
 ### MVP: one region, modular monolith
@@ -193,4 +202,4 @@ At 10,000 concurrent participants, a position report every two seconds is about 
 
 If “talk” means voice, add it after playback succeeds. Use WebRTC with an SFU (managed service or a well-operated LiveKit/mediasoup deployment), headphones, echo cancellation, and explicit audio ducking behavior. Music plus speech can conflict with provider mixing terms and Android audio focus; it needs its own policy and UX prototype. Text chat is the MVP.
 
-Preserve Windows options by keeping protocol/domain logic in pure TypeScript and playback behind the interface. React Native Windows can share UI/state and supports generated native modules, but each provider still needs a Windows implementation. Re-evaluate React Native Windows versus React web + Tauri/Electron when the Windows provider list is known; do not let a future desktop shell constrain the Android proof.
+Preserve Windows options by keeping protocol/domain logic in pure TypeScript and playback behind the interface. The Phase 0B native audio proof may proceed before the product shell is chosen. React Native Windows can share UI/state and supports generated native modules, but each provider still needs a Windows implementation. Re-evaluate React Native Windows versus React web + Tauri/Electron when the Windows provider list is known.
