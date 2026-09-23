@@ -38,8 +38,8 @@ object OutputRouteAssessment {
             actualDeviceIds.size == 1 -> OutputRouteState.SINGLE_ROUTE
             mode == AndroidRouteMode.SYSTEM_GROUP -> OutputRouteState.DISTINCT_ROUTES
             observations.any { observation ->
-                observation.requestedDeviceId == null ||
-                    observation.requestedDeviceId !in observation.actualDeviceIds
+                val requestedDeviceId = observation.requestedDeviceId
+                requestedDeviceId == null || observation.actualDeviceIds != setOf(requestedDeviceId)
             } -> OutputRouteState.PREFERENCE_MISMATCH
             else -> OutputRouteState.DISTINCT_ROUTES
         }

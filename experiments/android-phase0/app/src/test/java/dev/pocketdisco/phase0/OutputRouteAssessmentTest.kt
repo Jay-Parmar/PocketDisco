@@ -81,6 +81,32 @@ class OutputRouteAssessmentTest {
     }
 
     @Test
+    fun rejectsOverlappingRoutesAcrossTracks() {
+        val result = OutputRouteAssessment.evaluate(
+            listOf(
+                TrackRouteObservation("left", 7, setOf(7, 8)),
+                TrackRouteObservation("right", 8, setOf(7, 8)),
+            ),
+            AndroidRouteMode.DUAL_TRACK,
+        )
+
+        assertEquals(OutputRouteState.PREFERENCE_MISMATCH, result.state)
+    }
+
+    @Test
+    fun rejectsUnexpectedExtraRoute() {
+        val result = OutputRouteAssessment.evaluate(
+            listOf(
+                TrackRouteObservation("left", 7, setOf(7, 9)),
+                TrackRouteObservation("right", 8, setOf(8)),
+            ),
+            AndroidRouteMode.DUAL_TRACK,
+        )
+
+        assertEquals(OutputRouteState.PREFERENCE_MISMATCH, result.state)
+    }
+
+    @Test
     fun leavesSingleSystemGroupRouteUnverified() {
         val result = OutputRouteAssessment.evaluate(
             listOf(TrackRouteObservation("system", null, setOf(11))),
