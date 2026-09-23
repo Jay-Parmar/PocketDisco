@@ -11,8 +11,8 @@ public sealed class FanoutTelemetryWriterTests
         var result = new FanoutRunResult(
             TargetUnixMilliseconds: 10_000,
             ReadyUnixMilliseconds: 8_000,
-            CommandUnixMilliseconds: 10_007,
-            CommandTimestamp: 123_000,
+            CommandUnixMilliseconds: 20_000,
+            CommandErrorMilliseconds: 7,
             CompletedUnixMilliseconds: 15_010,
             InitialPosition: TimeSpan.Zero,
             WasLate: false);

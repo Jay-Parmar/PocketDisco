@@ -14,6 +14,17 @@ public sealed record ScheduledStart(
         }
     }
 
+    public long GetCommandErrorMilliseconds(
+        long commandTimestamp,
+        long stopwatchFrequency)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(stopwatchFrequency);
+        var errorTicks = checked(commandTimestamp - DeadlineTimestamp);
+        return (long)decimal.Round(
+            (decimal)errorTicks * 1_000 / stopwatchFrequency,
+            MidpointRounding.AwayFromZero);
+    }
+
     public static ScheduledStart Create(
         long targetUnixMilliseconds,
         long sampledUnixMilliseconds,

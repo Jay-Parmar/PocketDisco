@@ -11,7 +11,7 @@ public sealed record FanoutRunResult(
     long TargetUnixMilliseconds,
     long ReadyUnixMilliseconds,
     long CommandUnixMilliseconds,
-    long CommandTimestamp,
+    long CommandErrorMilliseconds,
     long CompletedUnixMilliseconds,
     TimeSpan InitialPosition,
     bool WasLate)
@@ -107,6 +107,9 @@ public static class FanoutSession
             await beforeStart;
             var commandTimestamp = Stopwatch.GetTimestamp();
             var commandUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var commandErrorMilliseconds = plan.GetCommandErrorMilliseconds(
+                commandTimestamp,
+                Stopwatch.Frequency);
             startGate.IssueStart(controller.Resume);
 
             var remaining = duration - plan.InitialPosition;
@@ -122,7 +125,7 @@ public static class FanoutSession
                 target,
                 readyUnixMilliseconds,
                 commandUnixMilliseconds,
-                commandTimestamp,
+                commandErrorMilliseconds,
                 completedUnixMilliseconds,
                 plan.InitialPosition,
                 plan.WasLate);

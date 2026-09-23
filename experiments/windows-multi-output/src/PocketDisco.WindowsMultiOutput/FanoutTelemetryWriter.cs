@@ -113,7 +113,7 @@ public static class FanoutTelemetryWriter
             "ok",
             timestampMilliseconds,
             result?.TargetUnixMilliseconds,
-            result?.CommandUnixMilliseconds - result?.TargetUnixMilliseconds,
+            result?.CommandErrorMilliseconds,
             result is null ? null : (long)Math.Round(result.InitialPosition.TotalMilliseconds),
             result?.WasLate,
             null);

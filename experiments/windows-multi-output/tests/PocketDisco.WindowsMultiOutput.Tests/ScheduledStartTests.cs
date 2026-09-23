@@ -55,4 +55,19 @@ public sealed class ScheduledStartTests
         Assert.ThrowsExactly<InvalidOperationException>(
             () => plan.ValidateMediaPosition(TimeSpan.FromSeconds(2)));
     }
+
+    [TestMethod]
+    public void CalculatesCommandErrorFromMonotonicClock()
+    {
+        var plan = ScheduledStart.Create(
+            targetUnixMilliseconds: 105_000,
+            sampledUnixMilliseconds: 100_000,
+            sampledTimestamp: 20_000_000,
+            currentTimestamp: 21_000_000,
+            Frequency);
+
+        var error = plan.GetCommandErrorMilliseconds(70_080_000, Frequency);
+
+        Assert.AreEqual(8, error);
+    }
 }
