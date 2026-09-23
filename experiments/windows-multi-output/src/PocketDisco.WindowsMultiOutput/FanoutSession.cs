@@ -95,6 +95,7 @@ public static class FanoutSession
                 sampledTimestamp,
                 Stopwatch.GetTimestamp(),
                 Stopwatch.Frequency);
+            plan.ValidateMediaPosition(duration);
 
             controller.Position = plan.InitialPosition;
             var deadline = WaitUntilAsync(plan.DeadlineTimestamp, cancellationToken);
@@ -105,9 +106,7 @@ public static class FanoutSession
             startGate.IssueStart(controller.Resume);
 
             var remaining = duration - plan.InitialPosition;
-            var completionTimeout = remaining > TimeSpan.Zero
-                ? remaining + CompletionGrace
-                : CompletionGrace;
+            var completionTimeout = remaining + CompletionGrace;
             var completed = await Task.WhenAny(
                 completion.Completion,
                 startGate.Failure,

@@ -5,6 +5,15 @@ public sealed record ScheduledStart(
     TimeSpan InitialPosition,
     bool WasLate)
 {
+    public void ValidateMediaPosition(TimeSpan mediaDuration)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(mediaDuration, TimeSpan.Zero);
+        if (InitialPosition >= mediaDuration)
+        {
+            throw new InvalidOperationException("The scheduled start is past the end of the signal.");
+        }
+    }
+
     public static ScheduledStart Create(
         long targetUnixMilliseconds,
         long sampledUnixMilliseconds,

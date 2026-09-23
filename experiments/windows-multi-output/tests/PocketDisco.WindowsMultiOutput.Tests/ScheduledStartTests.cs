@@ -41,4 +41,18 @@ public sealed class ScheduledStartTests
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
             ScheduledStart.Create(105_000, 100_000, 20_000_000, 21_000_000, 0));
     }
+
+    [TestMethod]
+    public void RejectsStartWhenInitialPositionReachesTrackDuration()
+    {
+        var plan = ScheduledStart.Create(
+            targetUnixMilliseconds: 98_000,
+            sampledUnixMilliseconds: 100_000,
+            sampledTimestamp: 20_000_000,
+            currentTimestamp: 30_000_000,
+            Frequency);
+
+        Assert.ThrowsExactly<InvalidOperationException>(
+            () => plan.ValidateMediaPosition(TimeSpan.FromSeconds(2)));
+    }
 }
