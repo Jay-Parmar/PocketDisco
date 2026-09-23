@@ -19,11 +19,13 @@ import android.widget.CheckBox
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import java.util.UUID
 
 @SuppressLint("SetTextI18n")
 class MultiOutputActivity : Activity() {
     private lateinit var capabilityProbe: AndroidOutputCapabilityProbe
     private lateinit var controller: MultiOutputController
+    private lateinit var recorder: TelemetryRecorder
     private lateinit var audioManager: AudioManager
     private lateinit var capabilityStatus: TextView
     private lateinit var firstOutput: Spinner
@@ -32,6 +34,7 @@ class MultiOutputActivity : Activity() {
     private lateinit var probeStatus: TextView
     private lateinit var runDualButton: Button
     private var directTargets = emptyList<OutputDeviceDescriptor>()
+    private val trialId = UUID.randomUUID().toString()
     private var deviceCallbackRegistered = false
     private val deviceCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
@@ -49,6 +52,7 @@ class MultiOutputActivity : Activity() {
 
         capabilityProbe = AndroidOutputCapabilityProbe(this)
         audioManager = getSystemService(AudioManager::class.java)
+        recorder = TelemetryRecorder(System::currentTimeMillis, SystemClock::elapsedRealtime)
         controller = MultiOutputController(this, SystemClock::elapsedRealtime, ::onProbeEvent)
         bindViews()
         wireControls()
@@ -75,6 +79,23 @@ class MultiOutputActivity : Activity() {
     override fun onDestroy() {
         controller.release()
         super.onDestroy()
+    }
+
+    @Deprecated("Activity result API keeps this throwaway probe dependency-light")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != EXPORT_REQUEST || resultCode != RESULT_OK) return
+        val destination = data?.data ?: return
+        try {
+            record("export_requested")
+            contentResolver.openOutputStream(destination)?.bufferedWriter(Charsets.UTF_8).use { writer ->
+                requireNotNull(writer) { "Could not open export destination" }
+                writer.write(recorder.toNdjson())
+            }
+            toast("Telemetry exported")
+        } catch (error: Exception) {
+            toast("Export failed: ${error.message}")
+        }
     }
 
     private fun bindViews() {
@@ -111,6 +132,7 @@ class MultiOutputActivity : Activity() {
             controller.stop()
             probeStatus.text = "Stopped"
         }
+        findViewById<Button>(R.id.export_multi_output).setOnClickListener { launchExport() }
     }
 
     private fun refreshOutputs() {
@@ -135,6 +157,7 @@ class MultiOutputActivity : Activity() {
             append("LE broadcast source: ${snapshot.leAudioBroadcastSource.name.lowercase()}\n")
             append("Outputs: ${snapshot.outputs.size}, direct targets: ${directTargets.size}")
         }
+        record("capabilities_refreshed", MultiOutputTelemetry.capabilityDetail(snapshot))
     }
 
     private fun restoreSelection(spinner: Spinner, deviceId: Int?, fallback: Int) {
@@ -154,6 +177,11 @@ class MultiOutputActivity : Activity() {
     }
 
     private fun onProbeEvent(event: MultiOutputProbeEvent) {
+        record(
+            name = event.name,
+            detail = MultiOutputTelemetry.eventDetail(event),
+            observedElapsedRealtimeMs = event.elapsedRealtimeMs,
+        )
         val status = event.status
         probeStatus.text = buildString {
             append(event.name.replace('_', ' '))
@@ -175,6 +203,31 @@ class MultiOutputActivity : Activity() {
         require(safeVolumeConfirmed.isChecked) { "Confirm a safe listening volume first" }
     }
 
+    private fun launchExport() {
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/x-ndjson"
+            putExtra(Intent.EXTRA_TITLE, "pocketdisco-android-output-$trialId.jsonl")
+        }
+        startActivityForResult(intent, EXPORT_REQUEST)
+    }
+
+    private fun record(
+        name: String,
+        detail: String = "",
+        observedElapsedRealtimeMs: Long? = null,
+    ) {
+        recorder.record(
+            deviceLabel = "android-output-probe",
+            trialId = trialId,
+            outputCategory = "multi_output",
+            category = "multi_output",
+            name = name,
+            detail = detail,
+            observedElapsedRealtimeMs = observedElapsedRealtimeMs,
+        )
+    }
+
     private fun runAction(action: () -> Unit) {
         try {
             action()
@@ -191,6 +244,7 @@ class MultiOutputActivity : Activity() {
     }
 
     companion object {
+        private const val EXPORT_REQUEST = 1201
         private const val START_LEAD_MS = 5_000L
     }
 }
