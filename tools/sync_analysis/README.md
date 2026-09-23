@@ -40,3 +40,39 @@ python -m tools.sync_analysis -i phone-a.jsonl -i phone-b.jsonl --format json -o
 Use `--expected-devices` for runs with more than two phones. Repeat `--gate-output` to require more than one output category. `--gate-measurement playback_start` checks estimated server-clock playback timestamps instead of acoustic onset.
 
 Exit code `0` means the selected gate passed, `1` means it failed, and `2` means input validation failed.
+
+## Mixed platform scenario reports
+
+Schema v2 keeps command timing, player observation, and acoustic onset as
+separate measurements. Its contract is in `telemetry-v2.schema.json`. Android
+physical devices, Android emulators, and Windows clients use one shared
+`scenario_id`, while each scheduled start keeps its coordinator `trial_id` and
+`start_id`.
+
+Run a mixed scenario report with every expected client named explicitly:
+
+```powershell
+python -m tools.sync_analysis mixed.jsonl `
+  --mode scenario `
+  --scenario-id mixed-01 `
+  --expected-client phone `
+  --expected-client emulator `
+  --expected-client windows
+```
+
+Add captured outputs only when isolated acoustic capture exists:
+
+```powershell
+  --expected-acoustic-output phone/system `
+  --expected-acoustic-output windows/output-1
+```
+
+Command and player timestamps use an estimated coordinator clock. Acoustic
+timestamps use one external capture clock and a run-local `output_id`. The
+scenario report never combines these measurements and does not evaluate the
+Phase 0 acoustic gate. An emulator can complete command and player coverage, but
+it is not physical Bluetooth or acoustic evidence.
+
+In scenario mode, exit code `0` means the requested records are complete. Exit
+code `1` means client coverage is incomplete, or requested acoustic outputs were
+not fully measured. Exit code `2` means input or scenario configuration failed.

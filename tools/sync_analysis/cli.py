@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Sequence
 
 from .analysis import AnalysisConfig, analyze, render_markdown
+from .scenario import ScenarioAnalysisConfig, analyze_scenario, render_scenario_markdown
 from .telemetry import (
     EVENT_TYPES,
     OUTPUT_CATEGORIES,
@@ -39,12 +40,34 @@ def _non_negative_float(value: str) -> float:
     return parsed
 
 
+def _client_id(value: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise argparse.ArgumentTypeError("must not be empty")
+    return normalized
+
+
+def _acoustic_output(value: str) -> tuple[str, str]:
+    if value.count("/") != 1:
+        raise argparse.ArgumentTypeError("must use DEVICE_ID/OUTPUT_ID")
+    device_id, separator, output_id = value.partition("/")
+    if not separator or not device_id.strip() or not output_id.strip():
+        raise argparse.ArgumentTypeError("must use DEVICE_ID/OUTPUT_ID")
+    return device_id.strip(), output_id.strip()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m tools.sync_analysis",
         description="Analyze synchronized-start JSONL telemetry.",
     )
     parser.add_argument("inputs", nargs="*", help="JSONL telemetry files")
+    parser.add_argument(
+        "--mode",
+        choices=("phase0", "scenario"),
+        default="phase0",
+        help="analysis mode; defaults to the Phase 0 v1 gate",
+    )
     parser.add_argument(
         "-i",
         "--input",
@@ -69,6 +92,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--gate-measurement",
         choices=EVENT_TYPES,
         default="acoustic_onset",
+    )
+    parser.add_argument("--scenario-id", help="v2 scenario to analyze")
+    parser.add_argument(
+        "--expected-client",
+        action="append",
+        default=[],
+        type=_client_id,
+        help="required v2 client ID; repeat for every client",
+    )
+    parser.add_argument(
+        "--expected-acoustic-output",
+        action="append",
+        default=[],
+        type=_acoustic_output,
+        metavar="DEVICE_ID/OUTPUT_ID",
+        help="required captured output; repeat for every output",
     )
     return parser
 
@@ -130,6 +169,61 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         observations = _load_inputs(paths)
     except InputValidationError as error:
+        print(_render_validation_error(error, args.format), file=sys.stderr)
+        return 2
+
+    if args.mode == "scenario":
+        if args.scenario_id is None:
+            parser.error("--scenario-id is required in scenario mode")
+        try:
+            scenario_config = ScenarioAnalysisConfig(
+                scenario_id=args.scenario_id,
+                expected_clients=tuple(args.expected_client),
+                expected_acoustic_outputs=tuple(args.expected_acoustic_output),
+            )
+            report = analyze_scenario(observations, scenario_config)
+        except ValueError as error:
+            if args.format == "json":
+                rendered_error = json.dumps(
+                    {"error": "scenario_analysis_failed", "message": str(error)},
+                    indent=2,
+                    sort_keys=True,
+                )
+            else:
+                rendered_error = f"Scenario analysis failed: {error}"
+            print(rendered_error, file=sys.stderr)
+            return 2
+
+        if args.format == "json":
+            rendered = json.dumps(report, indent=2, sort_keys=True) + "\n"
+        else:
+            rendered = render_scenario_markdown(report)
+        if args.output:
+            Path(args.output).write_text(rendered, encoding="utf-8")
+        else:
+            sys.stdout.write(rendered)
+
+        requested_acoustic = bool(scenario_config.expected_acoustic_outputs)
+        requested_coverage_complete = bool(
+            report["summary"]["command_player_complete"]
+        ) and (
+            not requested_acoustic
+            or report["summary"]["acoustic_status"] == "measured"
+        )
+        return 0 if requested_coverage_complete else 1
+
+    if any(observation.schema_version != 1 for observation in observations):
+        error = InputValidationError(
+            [
+                ValidationIssue(
+                    "<input>",
+                    0,
+                    "unsupported_analysis_mode",
+                    "schema_version 2 records require --mode scenario",
+                    "schema_version",
+                )
+            ]
+        )
         print(_render_validation_error(error, args.format), file=sys.stderr)
         return 2
 

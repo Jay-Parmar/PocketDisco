@@ -371,3 +371,76 @@ def analyze_scenario(
         },
         "measurements": measurements,
     }
+
+
+def _format_ms(value: object) -> str:
+    if value is None:
+        return "n/a"
+    return f"{float(value):.2f}"
+
+
+def render_scenario_markdown(report: dict[str, object]) -> str:
+    summary = report["summary"]
+    measurements = report["measurements"]
+    coverage = "complete" if summary["command_player_complete"] else "incomplete"
+    lines = [
+        "# Mixed sync analysis",
+        "",
+        f"Scenario: `{report['scenario_id']}`.",
+        "",
+        (
+            f"Records: {summary['records']}. Starts: {summary['attempted_starts']}. "
+            f"Command and player coverage: {coverage}. "
+            f"Acoustic status: {summary['acoustic_status']}."
+        ),
+        "",
+        "| Measurement | Clock source | Valid | Failed | Median ms | p95 ms | Max ms | Target p95 ms | Max uncertainty ms |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for measurement in measurements:
+        skew = measurement["skew_ms"]
+        target = measurement["absolute_target_error_ms"]
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    str(measurement["measurement"]),
+                    str(measurement["clock_source"]),
+                    str(measurement["valid_starts"]),
+                    str(measurement["failed_starts"]),
+                    _format_ms(skew["median"]),
+                    _format_ms(skew["p95"]),
+                    _format_ms(skew["max"]),
+                    _format_ms(target["p95"] if target is not None else None),
+                    _format_ms(measurement["max_clock_uncertainty_ms"]),
+                ]
+            )
+            + " |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "Command timing records when each client issued its playback command. "
+            "Player timing records when each client observed its player running. "
+            "Only external capture records measure audible onset.",
+            "",
+            "This report does not evaluate the Phase 0 acoustic gate.",
+        ]
+    )
+
+    failures = [
+        (measurement, failure)
+        for measurement in measurements
+        for failure in measurement["failures"]
+    ]
+    if failures:
+        lines.extend(["", "## Incomplete starts", ""])
+        for measurement, failure in failures:
+            codes = ", ".join(failure["codes"])
+            lines.append(
+                f"- {measurement['measurement']} "
+                f"{failure['trial_id']}/{failure['start_id']}: {codes}"
+            )
+
+    return "\n".join(lines) + "\n"
