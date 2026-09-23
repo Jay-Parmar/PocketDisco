@@ -180,6 +180,18 @@
         </RadioGroup>
 
         <Button
+            android:id="@+id/prepare_generated_output"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Prepare selected coordinator output" />
+
+        <TextView
+            android:id="@+id/multi_output_ready_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Output: prepare required" />
+
+        <Button
             android:id="@+id/create_generated_trial"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

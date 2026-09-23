@@ -82,6 +82,9 @@ class MultiOutputController(
     private val playbackObservationTracker = PlaybackObservationTracker()
     private val startState = PreparedPlaybackState()
     private var mode: AndroidRouteMode? = null
+    val isPrepared: Boolean
+        get() = startState.phase == PlaybackStartPhase.PREPARED
+
     private val pollRoutes = object : Runnable {
         override fun run() {
             if (!observeRoute("route_sample")) return

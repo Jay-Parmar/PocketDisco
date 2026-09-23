@@ -48,7 +48,9 @@ class MultiOutputActivity : Activity() {
     private lateinit var environment: Spinner
     private lateinit var outputCategory: Spinner
     private lateinit var clockStatus: TextView
+    private lateinit var readyStatus: TextView
     private lateinit var syncClockButton: Button
+    private lateinit var prepareOutputButton: Button
     private lateinit var createTrialButton: Button
     private lateinit var fetchTrialButton: Button
     private var directTargets = emptyList<OutputDeviceDescriptor>()
@@ -61,6 +63,7 @@ class MultiOutputActivity : Activity() {
     private var coordinatorGeneration = 0L
     private var clockEstimate: ClockEstimate? = null
     private var clockBaseUrl: String? = null
+    private var preparedCoordinatorRoute: CoordinatedOutputRoute? = null
     private val environments = GeneratedSyncEnvironment.values().toList()
     private val outputCategories = GeneratedSyncOutputCategory.values().toList()
     private val deviceCallback = object : AudioDeviceCallback() {
@@ -160,7 +163,9 @@ class MultiOutputActivity : Activity() {
         environment = findViewById(R.id.multi_output_environment)
         outputCategory = findViewById(R.id.multi_output_category)
         clockStatus = findViewById(R.id.multi_output_clock_status)
+        readyStatus = findViewById(R.id.multi_output_ready_status)
         syncClockButton = findViewById(R.id.sync_multi_output_clock)
+        prepareOutputButton = findViewById(R.id.prepare_generated_output)
         createTrialButton = findViewById(R.id.create_generated_trial)
         fetchTrialButton = findViewById(R.id.fetch_generated_trial)
     }
@@ -207,6 +212,9 @@ class MultiOutputActivity : Activity() {
         }
         syncClockButton.setOnClickListener {
             runAction { synchronizeCoordinatorClock() }
+        }
+        prepareOutputButton.setOnClickListener {
+            runAction { prepareCoordinatorOutput() }
         }
         createTrialButton.setOnClickListener {
             runAction { createCoordinatorTrial() }
@@ -277,6 +285,7 @@ class MultiOutputActivity : Activity() {
 
     private fun onProbeEvent(event: MultiOutputProbeEvent) {
         keepScreenAwakeForEvent(event.name)?.let(::setKeepScreenAwake)
+        if (event.name in PREPARATION_END_EVENTS) clearCoordinatorPreparation()
         generatedSyncRecorder.record(event)
         record(
             name = event.name,
@@ -366,9 +375,9 @@ class MultiOutputActivity : Activity() {
         require(baseUrl == clockBaseUrl) {
             "Synchronize the clock again after changing the coordinator URL"
         }
-        cancelCoordinatorTask()
+        cancelCoordinatorTask(releasePrepared = false)
         generatedSyncRecorder.clearActive("replaced")
-        prepareCoordinatorRoute(route)
+        ensureCoordinatorRoutePrepared(route)
         try {
             val request = CoordinatorTrialRequest(
                 assetId = ClickSignal.SIGNAL_ID,
@@ -406,9 +415,9 @@ class MultiOutputActivity : Activity() {
             "Synchronize the clock again after changing the coordinator URL"
         }
         val requestedTrialId = coordinatorTrialId.text.toString().trim()
-        cancelCoordinatorTask()
+        cancelCoordinatorTask(releasePrepared = false)
         generatedSyncRecorder.clearActive("replaced")
-        prepareCoordinatorRoute(route)
+        ensureCoordinatorRoutePrepared(route)
         try {
             startCoordinatorTask { generation ->
                 try {
@@ -510,6 +519,32 @@ class MultiOutputActivity : Activity() {
                 route.secondDeviceId,
             )
         }
+        preparedCoordinatorRoute = route
+        readyStatus.text = route.readyStatus
+    }
+
+    private fun prepareCoordinatorOutput() {
+        requireSafeVolume()
+        val route = selectedCoordinatorRoute()
+        cancelCoordinatorTask()
+        generatedSyncRecorder.clearActive("replaced")
+        prepareCoordinatorRoute(route)
+        record("coordinator_output_ready", route.telemetryDetail)
+    }
+
+    private fun ensureCoordinatorRoutePrepared(route: CoordinatedOutputRoute) {
+        if (shouldReuseCoordinatorPreparation(preparedCoordinatorRoute, route, controller.isPrepared)) {
+            readyStatus.text = route.readyStatus
+            record("coordinator_output_reused", route.telemetryDetail)
+            return
+        }
+        clearCoordinatorPreparation()
+        prepareCoordinatorRoute(route)
+    }
+
+    private fun clearCoordinatorPreparation() {
+        preparedCoordinatorRoute = null
+        if (::readyStatus.isInitialized) readyStatus.text = "Output: prepare required"
     }
 
     private fun selectedGeneratedIdentity(route: CoordinatedOutputRoute): GeneratedSyncIdentity =
@@ -542,6 +577,7 @@ class MultiOutputActivity : Activity() {
             coordinatorTask = networkExecutor.submit { action(generation) }
         } catch (error: Exception) {
             controller.cancelPrepared("request_failed")
+            clearCoordinatorPreparation()
             setCoordinatorBusy(false)
             throw error
         }
@@ -567,6 +603,7 @@ class MultiOutputActivity : Activity() {
     ) {
         postCoordinatorResult(generation) {
             controller.cancelPrepared("request_failed")
+            clearCoordinatorPreparation()
             cleanup()
             record(
                 name = "coordinator_request_failed",
@@ -576,16 +613,20 @@ class MultiOutputActivity : Activity() {
         }
     }
 
-    private fun cancelCoordinatorTask() {
+    private fun cancelCoordinatorTask(releasePrepared: Boolean = true) {
         coordinatorGeneration++
         coordinatorTask?.cancel(true)
         coordinatorTask = null
-        controller.cancelPrepared("cancelled")
+        if (releasePrepared) {
+            controller.cancelPrepared("cancelled")
+            clearCoordinatorPreparation()
+        }
         if (::syncClockButton.isInitialized) setCoordinatorBusy(false)
     }
 
     private fun setCoordinatorBusy(busy: Boolean) {
         syncClockButton.isEnabled = !busy
+        prepareOutputButton.isEnabled = !busy
         createTrialButton.isEnabled = !busy && clockEstimate != null
         fetchTrialButton.isEnabled = !busy && clockEstimate != null
         coordinatorUrl.isEnabled = !busy
@@ -653,17 +694,39 @@ class MultiOutputActivity : Activity() {
         private const val START_LEAD_MS = 5_000L
         private const val COORDINATOR_LEAD_TIME_MS = 25_000L
         private const val CLOCK_SAMPLE_COUNT = 7
+        private val PREPARATION_END_EVENTS = setOf(
+            "audio_focus_lost",
+            "playback_scheduled",
+            "playback_start_failed",
+            "playback_stopped",
+            "route_lost",
+        )
     }
 }
 
-private sealed interface CoordinatedOutputRoute {
-    data object System : CoordinatedOutputRoute
+internal sealed interface CoordinatedOutputRoute {
+    val readyStatus: String
+    val telemetryDetail: String
+
+    data object System : CoordinatedOutputRoute {
+        override val readyStatus = "Output: ready on current system route"
+        override val telemetryDetail = "route_mode=system_group"
+    }
 
     data class Dual(
         val firstDeviceId: Int,
         val secondDeviceId: Int,
-    ) : CoordinatedOutputRoute
+    ) : CoordinatedOutputRoute {
+        override val readyStatus = "Output: ready on selected dual route"
+        override val telemetryDetail = "route_mode=app_fanout"
+    }
 }
+
+internal fun shouldReuseCoordinatorPreparation(
+    preparedRoute: CoordinatedOutputRoute?,
+    requestedRoute: CoordinatedOutputRoute,
+    controllerIsPrepared: Boolean,
+): Boolean = controllerIsPrepared && preparedRoute == requestedRoute
 
 internal fun keepScreenAwakeForEvent(eventName: String): Boolean? = when (eventName) {
     "playback_scheduled" -> true
