@@ -13,10 +13,11 @@ testing documents.
 - [Windows multi-output probe protocol](windows-multi-output-protocol.md)
 - [Phase 0 gate checklist](gate-checklist.md)
 - [Physical-device smoke probe records](device-runs/)
+- [Windows multi-output run record](device-runs/2026-09-23-windows-multi-output.md)
 
 ## Scope
 
-Phase 0 answers four questions:
+Phase 0 answers five questions:
 
 1. Can two Android phones start the same owned or licensed MP4/AAC asset within
    the provisional built-in-speaker skew target?

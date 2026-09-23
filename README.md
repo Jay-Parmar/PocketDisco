@@ -36,7 +36,9 @@ PocketDisco/
   docs/
 ```
 
-Only the planning files exist now. Application scaffolding should begin after the Phase 0 policy and two-phone proof-of-concept gates in the build plan.
+The repository now contains isolated Phase 0 Android, coordinator, analysis,
+and Windows audio experiments. The complete product scaffold remains gated by
+the Phase 0 policy and two-phone proof requirements in the build plan.
 
 ## First success criteria
 
