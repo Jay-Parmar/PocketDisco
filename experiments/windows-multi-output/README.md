@@ -37,6 +37,29 @@ dotnet run --project src/PocketDisco.WindowsMultiOutput -c Release -- `
   --telemetry-file run.ndjson
 ```
 
+Run a coordinator-controlled trial after starting the Phase 0 coordinator:
+
+```powershell
+$env:POCKETDISCO_COORDINATOR_TOKEN = "<coordinator-token>"
+dotnet run --project src/PocketDisco.WindowsMultiOutput -c Release -- `
+  --devices 0,1 `
+  --duration-seconds 15 `
+  --coordinator-url http://192.168.1.20:8765 `
+  --coordinator-trial create
+```
+
+The command prints the trial UUID before playback. Use that UUID instead of
+`create` when joining the same trial from another client. Coordinator mode waits
+for both Windows outputs, takes seven clock samples, and accepts only generated
+signal trials with at least five seconds remaining. HTTP is limited to loopback
+and private LAN addresses. Use HTTPS for other hosts.
+
+Remove the token from the current shell after the trial:
+
+```powershell
+Remove-Item Env:POCKETDISCO_COORDINATOR_TOKEN
+```
+
 Endpoint indexes are valid only for the current enumeration. Confirm the names
 printed before playback, and cancel with Ctrl+C if they are not the intended
 outputs. Existing telemetry files are never overwritten.
