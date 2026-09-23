@@ -35,4 +35,11 @@
         android:layout_marginTop="12dp"
         android:text="YouTube foreground probe" />
 
+    <Button
+        android:id="@+id/open_multi_output"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="Android multi-output probe" />
+
 </LinearLayout>
