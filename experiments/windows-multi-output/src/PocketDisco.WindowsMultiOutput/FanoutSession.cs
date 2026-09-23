@@ -42,6 +42,7 @@ public static class FanoutSession
             targetUnixMilliseconds,
             coordinatorStartResolver: null,
             onCoordinatorResolved: null,
+            syncTelemetry: null,
             cancellationToken);
 
     public static Task<FanoutRunResult> RunCoordinatorAsync(
@@ -49,6 +50,7 @@ public static class FanoutSession
         TimeSpan duration,
         CoordinatorStartResolver coordinatorStartResolver,
         Action<CoordinatorRunContext>? onCoordinatorResolved,
+        GeneratedSyncTelemetryRecorder? syncTelemetry,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(coordinatorStartResolver);
@@ -59,6 +61,7 @@ public static class FanoutSession
             targetUnixMilliseconds: null,
             coordinatorStartResolver,
             onCoordinatorResolved,
+            syncTelemetry,
             cancellationToken);
     }
 
@@ -69,6 +72,7 @@ public static class FanoutSession
         long? targetUnixMilliseconds,
         CoordinatorStartResolver? coordinatorStartResolver,
         Action<CoordinatorRunContext>? onCoordinatorResolved,
+        GeneratedSyncTelemetryRecorder? syncTelemetry,
         CancellationToken cancellationToken)
     {
         if (endpoints.Count != 2)
@@ -122,9 +126,15 @@ public static class FanoutSession
                 };
                 player.MediaEnded += (_, _) => completion.MarkEnded(playerIndex);
                 player.PlaybackSession.PlaybackStateChanged += (session, _) =>
-                    playing.Update(
+                {
+                    var observedTimestamp = playing.Update(
                         playerIndex,
                         session.PlaybackState == MediaPlaybackState.Playing);
+                    if (observedTimestamp.HasValue)
+                    {
+                        syncTelemetry?.RecordPlaybackObserved(observedTimestamp.Value);
+                    }
+                };
                 player.Source = source;
             }
 
@@ -148,6 +158,12 @@ public static class FanoutSession
                 coordinatorContext = resolution.Context;
                 target = coordinatorContext.EffectiveAtUnixMilliseconds;
                 plan.ValidateMediaPosition(duration);
+                syncTelemetry?.Begin(coordinatorContext);
+                if (playing.FirstBothPlayingTimestamp is long observedTimestamp)
+                {
+                    syncTelemetry?.RecordPlaybackObserved(observedTimestamp);
+                }
+
                 onCoordinatorResolved?.Invoke(coordinatorContext);
             }
             else
@@ -182,7 +198,11 @@ public static class FanoutSession
             var commandErrorMilliseconds = plan.GetCommandErrorMilliseconds(
                 commandTimestamp,
                 Stopwatch.Frequency);
-            startGate.IssueStart(controller.Resume);
+            startGate.IssueStart(() =>
+            {
+                controller.Resume();
+                syncTelemetry?.RecordCommandIssued(commandTimestamp);
+            });
 
             var remaining = duration - plan.InitialPosition;
             var completionTimeout = remaining + CompletionGrace;

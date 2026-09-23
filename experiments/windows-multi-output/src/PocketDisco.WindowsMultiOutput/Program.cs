@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using PocketDisco.WindowsMultiOutput;
 
 if (args.SequenceEqual(["--list-devices"]))
@@ -57,6 +58,13 @@ if (options.Coordinator is not null)
 }
 
 using var coordinatorClientLifetime = coordinatorClient;
+var syncTelemetry = options.SyncTelemetry is null
+    ? null
+    : new GeneratedSyncTelemetryRecorder(
+        options.SyncTelemetry.ScenarioId,
+        options.SyncTelemetry.ClientId,
+        options.SyncTelemetry.OutputCategory,
+        Stopwatch.Frequency);
 Console.WriteLine("Selected outputs:");
 foreach (var endpoint in selection.Endpoints)
 {
@@ -97,11 +105,13 @@ try
                 Console.WriteLine(
                     $"Coordinator clock uncertainty: {context.ClockUncertaintyMilliseconds} ms");
             },
+            syncTelemetry,
             cancellation.Token);
     }
 }
 catch (OperationCanceledException)
 {
+    syncTelemetry?.RecordFailure(GeneratedSyncFailureReason.Cancelled);
     if (options.TelemetryPath is not null)
     {
         try
@@ -122,12 +132,15 @@ catch (OperationCanceledException)
         }
     }
 
+    await WriteSyncTelemetryAsync(options.SyncTelemetry, syncTelemetry);
+
     Console.Error.WriteLine("Playback cancelled.");
     Environment.ExitCode = 130;
     return;
 }
 catch (Exception exception)
 {
+    syncTelemetry?.RecordFailure(GeneratedSyncFailureReason.PlayerFailed);
     if (options.TelemetryPath is not null)
     {
         try
@@ -148,11 +161,14 @@ catch (Exception exception)
         }
     }
 
+    await WriteSyncTelemetryAsync(options.SyncTelemetry, syncTelemetry);
+
     Console.Error.WriteLine($"Playback failed: {exception.Message}");
     Environment.ExitCode = 1;
     return;
 }
 
+syncTelemetry?.RecordFailure(GeneratedSyncFailureReason.PlayerFailed);
 Console.WriteLine($"Start target: {result.TargetUnixMilliseconds}");
 Console.WriteLine($"Start command: {result.CommandUnixMilliseconds}");
 Console.WriteLine($"Late media position: {result.InitialPosition.TotalMilliseconds:F1} ms");
@@ -175,5 +191,41 @@ if (options.TelemetryPath is not null)
     {
         Console.Error.WriteLine($"Telemetry write failed: {exception.Message}");
         Environment.ExitCode = 1;
+    }
+}
+
+if (!await WriteSyncTelemetryAsync(options.SyncTelemetry, syncTelemetry))
+{
+    Environment.ExitCode = 1;
+}
+
+static async Task<bool> WriteSyncTelemetryAsync(
+    GeneratedSyncTelemetryOptions? options,
+    GeneratedSyncTelemetryRecorder? recorder)
+{
+    if (options is null || recorder is null)
+    {
+        return true;
+    }
+
+    var contents = recorder.ToNdjson();
+    if (contents.Length == 0)
+    {
+        return true;
+    }
+
+    try
+    {
+        var telemetryPath = await TelemetryFileWriter.WriteNewAsync(
+            options.Path,
+            contents,
+            CancellationToken.None);
+        Console.WriteLine($"Sync telemetry: {telemetryPath}");
+        return true;
+    }
+    catch (Exception exception)
+    {
+        Console.Error.WriteLine($"Sync telemetry write failed: {exception.Message}");
+        return false;
     }
 }

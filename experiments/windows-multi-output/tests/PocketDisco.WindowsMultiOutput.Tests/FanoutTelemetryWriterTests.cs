@@ -15,7 +15,15 @@ public sealed class FanoutTelemetryWriterTests
             CommandErrorMilliseconds: 7,
             CompletedUnixMilliseconds: 15_010,
             InitialPosition: TimeSpan.Zero,
-            WasLate: false);
+            WasLate: false)
+        {
+            CoordinatorContext = new CoordinatorRunContext(
+                Guid.Parse("11111111-2222-3333-4444-555555555555"),
+                10_000,
+                3,
+                50_000),
+            PlaybackObservedTimestamp = 50_012,
+        };
 
         var ndjson = FanoutTelemetryWriter.ToNdjson(
             result,
@@ -26,6 +34,8 @@ public sealed class FanoutTelemetryWriterTests
         Assert.HasCount(6, lines);
         Assert.DoesNotContain("internal-a", ndjson);
         Assert.DoesNotContain("Headphones", ndjson);
+        Assert.DoesNotContain("scenario_id", ndjson);
+        Assert.DoesNotContain("playback_observed", ndjson);
 
         using var startRecord = JsonDocument.Parse(lines[2]);
         var root = startRecord.RootElement;
