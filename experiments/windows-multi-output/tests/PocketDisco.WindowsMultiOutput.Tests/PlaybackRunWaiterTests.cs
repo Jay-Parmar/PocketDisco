@@ -27,4 +27,18 @@ public sealed class PlaybackRunWaiterTests
                 TimeSpan.Zero,
                 CancellationToken.None));
     }
+
+    [TestMethod]
+    public async Task FailureWinsWhenCompletionIsAlsoReady()
+    {
+        var failure = Task.FromException(new InvalidOperationException("failed"));
+
+        var error = await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () =>
+            await PlaybackRunWaiter.WaitForCompletionAsync(
+                Task.CompletedTask,
+                failure,
+                TimeSpan.FromMinutes(1),
+                CancellationToken.None));
+        Assert.AreEqual("failed", error.Message);
+    }
 }

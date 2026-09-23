@@ -14,12 +14,26 @@ public static class PlaybackRunWaiter
 
         var timeoutTask = Task.Delay(timeout, cancellationToken);
         var finished = await Task.WhenAny(completion, failure, timeoutTask);
+        if (failure.IsCompleted)
+        {
+            await failure;
+        }
+
         if (finished == timeoutTask)
         {
             await timeoutTask;
+            if (failure.IsCompleted)
+            {
+                await failure;
+            }
+
             throw new TimeoutException("Players did not report completion before the timeout.");
         }
 
-        await finished;
+        await completion;
+        if (failure.IsCompleted)
+        {
+            await failure;
+        }
     }
 }
