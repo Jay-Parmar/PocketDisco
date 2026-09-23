@@ -16,5 +16,6 @@ public static class ProbeInfo
           --duration-seconds N    Duration from 1 to 600, default 15
           --start-delay-ms N      Lead time from 1000 to 60000, default 3000
           --start-at-unix-ms N    Absolute UTC start time instead of a delay
+          --telemetry-file PATH   Save sanitized NDJSON evidence
         """;
 }

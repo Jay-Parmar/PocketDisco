@@ -43,6 +43,7 @@ foreach (var endpoint in selection.Endpoints)
 }
 
 Console.WriteLine("The click track uses 12% application volume.");
+var runId = Guid.NewGuid();
 try
 {
     var result = await FanoutSession.RunAsync(
@@ -54,9 +55,46 @@ try
     Console.WriteLine($"Start target: {result.TargetUnixMilliseconds}");
     Console.WriteLine($"Start command: {result.CommandUnixMilliseconds}");
     Console.WriteLine($"Late media position: {result.InitialPosition.TotalMilliseconds:F1} ms");
+    if (options.TelemetryPath is not null)
+    {
+        await WriteTelemetryAsync(
+            options.TelemetryPath,
+            FanoutTelemetryWriter.ToNdjson(result, selection.Endpoints.Count, runId));
+    }
 }
 catch (Exception exception) when (exception is not OperationCanceledException)
 {
+    if (options.TelemetryPath is not null)
+    {
+        try
+        {
+            await WriteTelemetryAsync(
+                options.TelemetryPath,
+                FanoutTelemetryWriter.ToFailureNdjson(
+                    selection.Endpoints.Count,
+                    runId,
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    FanoutFailureReason.PlaybackFailed));
+        }
+        catch (Exception telemetryException)
+        {
+            Console.Error.WriteLine($"Telemetry write failed: {telemetryException.Message}");
+        }
+    }
+
     Console.Error.WriteLine($"Playback failed: {exception.Message}");
     Environment.ExitCode = 1;
+}
+
+static async Task WriteTelemetryAsync(string path, string contents)
+{
+    var fullPath = Path.GetFullPath(path);
+    var directory = Path.GetDirectoryName(fullPath);
+    if (!string.IsNullOrEmpty(directory))
+    {
+        Directory.CreateDirectory(directory);
+    }
+
+    await File.WriteAllTextAsync(fullPath, contents);
+    Console.WriteLine($"Telemetry: {fullPath}");
 }

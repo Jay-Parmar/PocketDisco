@@ -3,6 +3,12 @@ using System.Text.Json.Serialization;
 
 namespace PocketDisco.WindowsMultiOutput;
 
+public enum FanoutFailureReason
+{
+    PlaybackFailed,
+    Cancelled,
+}
+
 public static class FanoutTelemetryWriter
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
@@ -52,6 +58,43 @@ public static class FanoutTelemetryWriter
             records.Select(record => JsonSerializer.Serialize(record, SerializerOptions))) + '\n';
     }
 
+    public static string ToFailureNdjson(
+        int outputCount,
+        Guid runId,
+        long timestampMilliseconds,
+        FanoutFailureReason failureReason)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(outputCount);
+        var reason = failureReason switch
+        {
+            FanoutFailureReason.PlaybackFailed => "playback_failed",
+            FanoutFailureReason.Cancelled => "cancelled",
+            _ => throw new ArgumentOutOfRangeException(nameof(failureReason)),
+        };
+
+        var records = Enumerable.Range(0, outputCount)
+            .Select(outputIndex => new FanoutTelemetryRecord(
+                1,
+                "windows_multi_output_probe",
+                runId.ToString("D"),
+                "probe_failed",
+                $"output-{outputIndex + 1}",
+                "windows",
+                "app_fanout",
+                "generated_click",
+                "failed",
+                timestampMilliseconds,
+                null,
+                null,
+                null,
+                null,
+                reason));
+
+        return string.Join(
+            '\n',
+            records.Select(record => JsonSerializer.Serialize(record, SerializerOptions))) + '\n';
+    }
+
     private static FanoutTelemetryRecord CreateRecord(
         Guid runId,
         int outputIndex,
@@ -72,7 +115,8 @@ public static class FanoutTelemetryWriter
             result?.TargetUnixMilliseconds,
             result?.CommandUnixMilliseconds - result?.TargetUnixMilliseconds,
             result is null ? null : (long)Math.Round(result.InitialPosition.TotalMilliseconds),
-            result?.WasLate);
+            result?.WasLate,
+            null);
 
     private sealed record FanoutTelemetryRecord(
         int SchemaVersion,
@@ -88,5 +132,6 @@ public static class FanoutTelemetryWriter
         long? TargetTimestampMs,
         long? CommandErrorMs,
         long? InitialPositionMs,
-        bool? WasLate);
+        bool? WasLate,
+        string? FailureReason);
 }

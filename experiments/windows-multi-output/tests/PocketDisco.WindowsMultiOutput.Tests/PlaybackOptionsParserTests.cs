@@ -7,7 +7,12 @@ public sealed class PlaybackOptionsParserTests
     public void ParsesSelectedDevicesAndTiming()
     {
         var result = PlaybackOptionsParser.Parse(
-            ["--devices", "0,2", "--duration-seconds", "20", "--start-delay-ms", "5000"]);
+            [
+                "--devices", "0,2",
+                "--duration-seconds", "20",
+                "--start-delay-ms", "5000",
+                "--telemetry-file", "run.ndjson",
+            ]);
 
         Assert.IsTrue(result.IsValid);
         Assert.HasCount(2, result.Options!.DeviceIndexes);
@@ -16,6 +21,7 @@ public sealed class PlaybackOptionsParserTests
         Assert.AreEqual(TimeSpan.FromSeconds(20), result.Options.Duration);
         Assert.AreEqual(TimeSpan.FromSeconds(5), result.Options.StartDelay);
         Assert.IsNull(result.Options.TargetUnixMilliseconds);
+        Assert.AreEqual("run.ndjson", result.Options.TelemetryPath);
     }
 
     [TestMethod]

@@ -6,7 +6,8 @@ public sealed record PlaybackOptions(
     IReadOnlyList<int> DeviceIndexes,
     TimeSpan Duration,
     TimeSpan StartDelay,
-    long? TargetUnixMilliseconds);
+    long? TargetUnixMilliseconds,
+    string? TelemetryPath);
 
 public sealed record PlaybackOptionsParseResult(PlaybackOptions? Options, string? Error)
 {
@@ -24,6 +25,7 @@ public static class PlaybackOptionsParser
         var duration = DefaultDuration;
         var startDelay = DefaultStartDelay;
         long? targetUnixMilliseconds = null;
+        string? telemetryPath = null;
         var hasStartDelay = false;
 
         for (var index = 0; index < arguments.Count; index += 2)
@@ -32,7 +34,8 @@ public static class PlaybackOptionsParser
             if (option is not "--devices"
                 and not "--duration-seconds"
                 and not "--start-delay-ms"
-                and not "--start-at-unix-ms")
+                and not "--start-at-unix-ms"
+                and not "--telemetry-file")
             {
                 return Invalid($"Unknown option: {option}.");
             }
@@ -78,6 +81,14 @@ public static class PlaybackOptionsParser
 
                     targetUnixMilliseconds = target;
                     break;
+                case "--telemetry-file":
+                    if (string.IsNullOrWhiteSpace(value))
+                    {
+                        return Invalid("--telemetry-file must not be empty.");
+                    }
+
+                    telemetryPath = value;
+                    break;
             }
         }
 
@@ -92,7 +103,12 @@ public static class PlaybackOptionsParser
         }
 
         return new PlaybackOptionsParseResult(
-            new PlaybackOptions(deviceIndexes, duration, startDelay, targetUnixMilliseconds),
+            new PlaybackOptions(
+                deviceIndexes,
+                duration,
+                startDelay,
+                targetUnixMilliseconds,
+                telemetryPath),
             null);
     }
 
