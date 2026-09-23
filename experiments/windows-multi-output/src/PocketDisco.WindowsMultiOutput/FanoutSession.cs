@@ -19,6 +19,8 @@ public sealed record FanoutRunResult(
     public IReadOnlyList<string> CleanupWarnings { get; init; } = [];
 
     public CoordinatorRunContext? CoordinatorContext { get; init; }
+
+    public long? PlaybackObservedTimestamp { get; init; }
 }
 
 public static class FanoutSession
@@ -81,6 +83,7 @@ public static class FanoutSession
         var sources = new List<MediaSource>(endpoints.Count);
         var readiness = new PlaybackReadiness(endpoints.Count);
         var completion = new PlaybackCompletion(endpoints.Count);
+        var playing = new PlaybackPlayingAggregator(endpoints.Count, Stopwatch.GetTimestamp);
         var startGate = new PlaybackStartGate();
         var controller = new MediaTimelineController();
         controller.Failed += (_, eventArgs) =>
@@ -118,6 +121,10 @@ public static class FanoutSession
                     readiness.MarkFailed(playerIndex, eventArgs.ErrorMessage);
                 };
                 player.MediaEnded += (_, _) => completion.MarkEnded(playerIndex);
+                player.PlaybackSession.PlaybackStateChanged += (session, _) =>
+                    playing.Update(
+                        playerIndex,
+                        session.PlaybackState == MediaPlaybackState.Playing);
                 player.Source = source;
             }
 
@@ -196,6 +203,7 @@ public static class FanoutSession
                 plan.WasLate)
             {
                 CoordinatorContext = coordinatorContext,
+                PlaybackObservedTimestamp = playing.FirstBothPlayingTimestamp,
             };
         }
         finally
