@@ -54,4 +54,20 @@ public sealed class FanoutTelemetryWriterTests
         Assert.AreEqual("failed", root.GetProperty("outcome").GetString());
         Assert.AreEqual("playback_failed", root.GetProperty("failure_reason").GetString());
     }
+
+    [TestMethod]
+    public void WritesCancellationReason()
+    {
+        var ndjson = FanoutTelemetryWriter.ToFailureNdjson(
+            outputCount: 2,
+            runId: Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            timestampMilliseconds: 10_000,
+            FanoutFailureReason.Cancelled);
+
+        using var record = JsonDocument.Parse(
+            ndjson.Split('\n', StringSplitOptions.RemoveEmptyEntries)[0]);
+        Assert.AreEqual(
+            "cancelled",
+            record.RootElement.GetProperty("failure_reason").GetString());
+    }
 }

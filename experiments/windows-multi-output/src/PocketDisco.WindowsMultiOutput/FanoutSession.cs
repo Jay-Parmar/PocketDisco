@@ -111,16 +111,11 @@ public static class FanoutSession
 
             var remaining = duration - plan.InitialPosition;
             var completionTimeout = remaining + CompletionGrace;
-            var completed = await Task.WhenAny(
+            await PlaybackRunWaiter.WaitForCompletionAsync(
                 completion.Completion,
                 startGate.Failure,
-                Task.Delay(completionTimeout, cancellationToken));
-            if (completed != completion.Completion && completed != startGate.Failure)
-            {
-                throw new TimeoutException("Players did not report completion before the timeout.");
-            }
-
-            await completed;
+                completionTimeout,
+                cancellationToken);
 
             var completedUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             result = new FanoutRunResult(

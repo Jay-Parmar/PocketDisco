@@ -44,6 +44,12 @@ foreach (var endpoint in selection.Endpoints)
 
 Console.WriteLine("The click track uses 12% application volume.");
 var runId = Guid.NewGuid();
+using var cancellation = new CancellationTokenSource();
+Console.CancelKeyPress += (_, eventArgs) =>
+{
+    eventArgs.Cancel = true;
+    cancellation.Cancel();
+};
 FanoutRunResult result;
 try
 {
@@ -52,9 +58,35 @@ try
         options.Duration,
         options.StartDelay,
         options.TargetUnixMilliseconds,
-        CancellationToken.None);
+        cancellation.Token);
 }
-catch (Exception exception) when (exception is not OperationCanceledException)
+catch (OperationCanceledException)
+{
+    if (options.TelemetryPath is not null)
+    {
+        try
+        {
+            var telemetryPath = await TelemetryFileWriter.WriteNewAsync(
+                options.TelemetryPath,
+                FanoutTelemetryWriter.ToFailureNdjson(
+                    selection.Endpoints.Count,
+                    runId,
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    FanoutFailureReason.Cancelled),
+                CancellationToken.None);
+            Console.WriteLine($"Telemetry: {telemetryPath}");
+        }
+        catch (Exception telemetryException)
+        {
+            Console.Error.WriteLine($"Telemetry write failed: {telemetryException.Message}");
+        }
+    }
+
+    Console.Error.WriteLine("Playback cancelled.");
+    Environment.ExitCode = 130;
+    return;
+}
+catch (Exception exception)
 {
     if (options.TelemetryPath is not null)
     {
@@ -96,7 +128,7 @@ if (options.TelemetryPath is not null)
         var telemetryPath = await TelemetryFileWriter.WriteNewAsync(
             options.TelemetryPath,
             FanoutTelemetryWriter.ToNdjson(result, selection.Endpoints.Count, runId),
-            CancellationToken.None);
+            cancellation.Token);
         Console.WriteLine($"Telemetry: {telemetryPath}");
     }
     catch (Exception exception)
