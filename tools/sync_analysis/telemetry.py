@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, TextIO
@@ -25,6 +26,7 @@ PLATFORMS = ("android", "windows")
 ENVIRONMENTS = ("physical", "emulator")
 ROUTE_MODES = ("single", "system_group", "app_fanout")
 CLOCK_SOURCES = ("coordinator_estimate", "external_capture")
+SHA256_PATTERN = re.compile(r"[0-9a-fA-F]{64}")
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,8 @@ class Observation:
     target_timestamp_ms: float | None = None
     clock_source: str | None = None
     clock_uncertainty_ms: float | None = None
+    signal_id: str | None = None
+    signal_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -148,6 +152,30 @@ def _non_negative_number(
         )
         return None
     return float(value)
+
+
+def _required_sha256(
+    record: dict[str, object],
+    field: str,
+    source: str,
+    line: int,
+    issues: list[ValidationIssue],
+) -> str | None:
+    value = _required_string(record, field, source, line, issues)
+    if value is None:
+        return None
+    if SHA256_PATTERN.fullmatch(value) is None:
+        issues.append(
+            ValidationIssue(
+                source,
+                line,
+                "invalid_field",
+                f"{field} must be a 64-character hexadecimal SHA-256 digest",
+                field,
+            )
+        )
+        return None
+    return value.lower()
 
 
 def _validate_v1_record(
@@ -270,6 +298,14 @@ def _validate_v2_record(
         issues,
     )
     provider = _required_string(record, "provider", source, line, issues)
+    signal_id = _required_string(record, "signal_id", source, line, issues)
+    signal_sha256 = _required_sha256(
+        record,
+        "signal_sha256",
+        source,
+        line,
+        issues,
+    )
     output_category = _choice(
         _required_string(record, "output_category", source, line, issues),
         "output_category",
@@ -392,6 +428,8 @@ def _validate_v2_record(
     assert platform is not None
     assert environment is not None
     assert provider is not None
+    assert signal_id is not None
+    assert signal_sha256 is not None
     assert output_category is not None
     assert route_mode is not None
     assert outcome is not None
@@ -415,6 +453,8 @@ def _validate_v2_record(
         target_timestamp_ms=target_timestamp_ms,
         clock_source=clock_source,
         clock_uncertainty_ms=clock_uncertainty_ms,
+        signal_id=signal_id,
+        signal_sha256=signal_sha256,
     )
 
 

@@ -7,6 +7,9 @@ from tools.sync_analysis.telemetry import Observation
 
 
 CLIENTS = ("phone", "emulator", "windows")
+SIGNAL_SHA256 = (
+    "e3c4db9cce24fdeb8cfc9131f0240665c54afde2519d99a59b91db98602274f0"
+)
 
 
 def observation(
@@ -23,6 +26,8 @@ def observation(
     target_timestamp_ms: float | None = 10_000,
     failure_reason: str | None = None,
     provider: str = "generated_audio",
+    signal_id: str = "generated-click-v1",
+    signal_sha256: str = SIGNAL_SHA256,
 ) -> Observation:
     acoustic = measurement == "acoustic_onset"
     return Observation(
@@ -45,6 +50,8 @@ def observation(
         target_timestamp_ms=None if acoustic else target_timestamp_ms,
         clock_source="external_capture" if acoustic else "coordinator_estimate",
         clock_uncertainty_ms=clock_uncertainty_ms,
+        signal_id=signal_id,
+        signal_sha256=signal_sha256,
     )
 
 
@@ -256,6 +263,33 @@ class ScenarioAnalysisTests(unittest.TestCase):
         self.assertIn("provider_mismatch", command_codes)
         self.assertIn("provider_mismatch", player_codes)
         self.assertFalse(report["summary"]["command_player_complete"])
+
+    def test_signal_mismatch_invalidates_scenario_starts(self) -> None:
+        mismatches = (
+            ("generated-click-other", SIGNAL_SHA256),
+            ("generated-click-v1", "0" * 64),
+        )
+        for signal_id, signal_sha256 in mismatches:
+            with self.subTest(signal_id=signal_id, signal_sha256=signal_sha256):
+                records = client_measurements()
+                records[0] = observation(
+                    "command_issued",
+                    "phone",
+                    10_002,
+                    signal_id=signal_id,
+                    signal_sha256=signal_sha256,
+                )
+
+                report = analyze_scenario(
+                    records,
+                    ScenarioAnalysisConfig("mixed-01", CLIENTS),
+                )
+
+                command_codes = report["measurements"][0]["failures"][0]["codes"]
+                player_codes = report["measurements"][1]["failures"][0]["codes"]
+                self.assertIn("signal_mismatch", command_codes)
+                self.assertIn("signal_mismatch", player_codes)
+                self.assertFalse(report["summary"]["command_player_complete"])
 
     def test_target_mismatch_invalidates_client_measurement(self) -> None:
         records = client_measurements()

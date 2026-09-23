@@ -13,6 +13,8 @@
     "platform",
     "environment",
     "provider",
+    "signal_id",
+    "signal_sha256",
     "output_category",
     "route_mode",
     "outcome"
@@ -49,6 +51,14 @@
     "provider": {
       "type": "string",
       "minLength": 1
+    },
+    "signal_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signal_sha256": {
+      "type": "string",
+      "pattern": "^[0-9A-Fa-f]{64}$"
     },
     "output_category": {
       "enum": ["built_in", "wired", "bluetooth", "usb", "virtual", "mixed"]

@@ -305,6 +305,11 @@ def analyze_scenario(
     ]
     if not selected:
         raise ValueError(f"scenario not found: {config.scenario_id}")
+    if any(
+        observation.signal_id is None or observation.signal_sha256 is None
+        for observation in selected
+    ):
+        raise ValueError("scenario records require signal identity")
 
     grouped: dict[tuple[str, ScenarioStartKey], list[Observation]] = defaultdict(list)
     providers_by_start: dict[ScenarioStartKey, set[str]] = defaultdict(set)
@@ -318,10 +323,25 @@ def analyze_scenario(
         grouped[(observation.event_type, key)].append(observation)
 
     ordered_starts = sorted(all_start_keys)
+    shared_issue_lists: dict[ScenarioStartKey, list[tuple[str, str]]] = defaultdict(list)
+    for key, providers in providers_by_start.items():
+        if len(providers) > 1:
+            shared_issue_lists[key].append(
+                ("provider_mismatch", "measurements do not share one provider")
+            )
+    signal_identities = {
+        (observation.signal_id, observation.signal_sha256) for observation in selected
+    }
+    if len(signal_identities) > 1:
+        for key in ordered_starts:
+            shared_issue_lists[key].append(
+                (
+                    "signal_mismatch",
+                    "scenario records do not share one signal identity",
+                )
+            )
     shared_issues = {
-        key: (("provider_mismatch", "measurements do not share one provider"),)
-        for key, providers in providers_by_start.items()
-        if len(providers) > 1
+        key: tuple(issues) for key, issues in shared_issue_lists.items()
     }
     measurements = [
         _measurement_report(

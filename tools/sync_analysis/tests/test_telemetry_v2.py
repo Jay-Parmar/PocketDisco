@@ -18,6 +18,10 @@ def command_record() -> dict[str, object]:
         "platform": "android",
         "environment": "physical",
         "provider": "generated_audio",
+        "signal_id": "generated-click-v1",
+        "signal_sha256": (
+            "e3c4db9cce24fdeb8cfc9131f0240665c54afde2519d99a59b91db98602274f0"
+        ),
         "output_category": "built_in",
         "route_mode": "single",
         "outcome": "ok",
@@ -37,6 +41,8 @@ class TelemetryV2ValidationTests(unittest.TestCase):
 
         self.assertEqual(schema["properties"]["schema_version"]["const"], 2)
         self.assertIn("command_issued", schema["properties"]["event_type"]["enum"])
+        self.assertIn("signal_id", schema["required"])
+        self.assertIn("signal_sha256", schema["required"])
 
     def test_valid_client_command(self) -> None:
         observation = validate_record(command_record(), "input.jsonl", 1)
@@ -45,6 +51,27 @@ class TelemetryV2ValidationTests(unittest.TestCase):
         self.assertEqual(observation.scenario_id, "mixed-01")
         self.assertEqual(observation.target_timestamp_ms, 10_000)
         self.assertEqual(observation.clock_uncertainty_ms, 3)
+        self.assertEqual(observation.signal_id, "generated-click-v1")
+
+    def test_signal_identity_is_required(self) -> None:
+        for field in ("signal_id", "signal_sha256"):
+            with self.subTest(field=field):
+                record = command_record()
+                record.pop(field)
+
+                with self.assertRaises(InputValidationError) as context:
+                    validate_record(record, "input.jsonl", 1)
+
+                self.assertIn(field, {issue.field for issue in context.exception.issues})
+
+    def test_signal_digest_must_be_sha256(self) -> None:
+        record = command_record()
+        record["signal_sha256"] = "not-a-digest"
+
+        with self.assertRaises(InputValidationError) as context:
+            validate_record(record, "input.jsonl", 1)
+
+        self.assertEqual(context.exception.issues[0].field, "signal_sha256")
 
     def test_valid_acoustic_onset_uses_external_capture(self) -> None:
         record = command_record()

@@ -47,7 +47,9 @@ Schema v2 keeps command timing, player observation, and acoustic onset as
 separate measurements. Its contract is in `telemetry-v2.schema.json`. Android
 physical devices, Android emulators, and Windows clients use one shared
 `scenario_id`, while each scheduled start keeps its coordinator `trial_id` and
-`start_id`.
+`start_id`. Every record requires a non-empty `signal_id` and a 64-character
+hexadecimal `signal_sha256`. A scenario with more than one signal identity is
+incomplete.
 
 Run a mixed scenario report with every expected client named explicitly:
 

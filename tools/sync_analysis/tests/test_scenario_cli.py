@@ -11,6 +11,9 @@ from tools.sync_analysis.cli import main
 
 
 CLIENTS = ("phone", "emulator", "windows")
+SIGNAL_SHA256 = (
+    "e3c4db9cce24fdeb8cfc9131f0240665c54afde2519d99a59b91db98602274f0"
+)
 
 
 def record(
@@ -32,6 +35,8 @@ def record(
         "platform": "windows" if device_id == "windows" else "android",
         "environment": "emulator" if device_id == "emulator" else "physical",
         "provider": "generated_audio",
+        "signal_id": "generated-click-v1",
+        "signal_sha256": SIGNAL_SHA256,
         "output_category": "virtual" if device_id == "emulator" else "built_in",
         "route_mode": "app_fanout" if device_id == "windows" else "single",
         "outcome": "ok",
