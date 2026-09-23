@@ -25,10 +25,7 @@ object GeneratedSignalTrialPlanner {
         val targetElapsedRealtimeMs = clockEstimate.elapsedRealtimeForServerUnix(
             trial.effectiveAtUnixMs,
         )
-        val leadMs = Math.subtractExact(targetElapsedRealtimeMs, currentElapsedRealtimeMs)
-        require(leadMs >= MINIMUM_LEAD_MS) {
-            "Generated signal trial has insufficient lead time"
-        }
+        requireSufficientLead(targetElapsedRealtimeMs, currentElapsedRealtimeMs)
         return GeneratedSignalPlan(
             trialId = trial.id,
             target = CoordinationTarget(
@@ -36,5 +33,15 @@ object GeneratedSignalTrialPlanner {
                 elapsedRealtimeMs = targetElapsedRealtimeMs,
             ),
         )
+    }
+
+    fun requireSufficientLead(
+        targetElapsedRealtimeMs: Long,
+        currentElapsedRealtimeMs: Long,
+    ) {
+        val leadMs = Math.subtractExact(targetElapsedRealtimeMs, currentElapsedRealtimeMs)
+        require(leadMs >= MINIMUM_LEAD_MS) {
+            "Generated signal trial has insufficient lead time"
+        }
     }
 }

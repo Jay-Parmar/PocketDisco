@@ -80,6 +80,7 @@ class MultiOutputController(
     private val managedTracks = mutableListOf<ManagedTrack>()
     private val routeTracker = OutputRouteTracker()
     private val playbackObservationTracker = PlaybackObservationTracker()
+    private val startState = PreparedPlaybackState()
     private var mode: AndroidRouteMode? = null
     private val pollRoutes = object : Runnable {
         override fun run() {
@@ -94,6 +95,14 @@ class MultiOutputController(
         targetElapsedRealtimeMs: Long,
     ) {
         require(targetElapsedRealtimeMs > elapsedRealtimeMs()) { "Start target has already passed" }
+        prepareDual(firstDeviceId, secondDeviceId)
+        armOrRelease(targetElapsedRealtimeMs)
+    }
+
+    fun prepareDual(
+        firstDeviceId: Int,
+        secondDeviceId: Int,
+    ) {
         val devices = currentOutputDevices()
         val descriptors = devices.map(::describe)
         val selection = MultiOutputSelector.select(descriptors, firstDeviceId, secondDeviceId)
@@ -104,22 +113,66 @@ class MultiOutputController(
         val targets = selection.targets.map { descriptor ->
             requireNotNull(byId[descriptor.id]) { "Output ${descriptor.id} disconnected" }
         }
-        schedule(
+        prepare(
             routeMode = AndroidRouteMode.DUAL_TRACK,
             targets = targets.mapIndexed { index, device ->
                 TrackTarget(label = "track_${index + 1}", device = device)
             },
-            targetElapsedRealtimeMs = targetElapsedRealtimeMs,
         )
     }
 
     fun scheduleSystemRoute(targetElapsedRealtimeMs: Long) {
         require(targetElapsedRealtimeMs > elapsedRealtimeMs()) { "Start target has already passed" }
-        schedule(
+        prepareSystemRoute()
+        armOrRelease(targetElapsedRealtimeMs)
+    }
+
+    fun prepareSystemRoute() {
+        prepare(
             routeMode = AndroidRouteMode.SYSTEM_GROUP,
             targets = listOf(TrackTarget(label = "system", device = null)),
-            targetElapsedRealtimeMs = targetElapsedRealtimeMs,
         )
+    }
+
+    fun armPrepared(targetElapsedRealtimeMs: Long) {
+        require(targetElapsedRealtimeMs > elapsedRealtimeMs()) { "Start target has already passed" }
+        startState.markArmed()
+        try {
+            emit(
+                name = "playback_scheduled",
+                status = status(),
+                detail = "target_elapsed_realtime_ms=$targetElapsedRealtimeMs",
+            )
+            scheduler.scheduleAt(targetElapsedRealtimeMs) { actualElapsedRealtimeMs ->
+                val firstCallNs = System.nanoTime()
+                attemptPlaybackStart(
+                    playActions = managedTracks.map { managed -> managed.track::play },
+                    afterStarted = {
+                        val finalCallNs = System.nanoTime()
+                        val playbackStatus = status()
+                        emit(
+                            name = "play_commands_issued",
+                            status = playbackStatus,
+                            detail = "command_delta_ms=${actualElapsedRealtimeMs - targetElapsedRealtimeMs};" +
+                                "play_call_span_ns=${finalCallNs - firstCallNs}",
+                        )
+                        emitPlaybackObserved(playbackStatus)
+                        if (!stopIfRouteLost(playbackStatus)) {
+                            handler.removeCallbacks(pollRoutes)
+                            handler.postDelayed(pollRoutes, ROUTE_WARMUP_MS)
+                        }
+                    },
+                    onFailure = ::handlePlaybackStartFailure,
+                )
+            }
+        } catch (error: Exception) {
+            stop("arm_failed")
+            throw error
+        }
+    }
+
+    fun cancelPrepared(reason: String = "cancelled") {
+        if (startState.canCancelPreparation) stop(reason)
     }
 
     fun status(): MultiOutputStatus {
@@ -156,6 +209,7 @@ class MultiOutputController(
         }
         managedTracks.clear()
         mode = null
+        startState.reset()
         routeTracker.reset()
         playbackObservationTracker.reset()
         runCatching { audioManager.abandonAudioFocusRequest(focusRequest) }
@@ -166,10 +220,9 @@ class MultiOutputController(
         stop("released")
     }
 
-    private fun schedule(
+    private fun prepare(
         routeMode: AndroidRouteMode,
         targets: List<TrackTarget>,
-        targetElapsedRealtimeMs: Long,
     ) {
         stop("replaced")
         require(
@@ -178,36 +231,20 @@ class MultiOutputController(
         mode = routeMode
         try {
             targets.forEach { target -> managedTracks += buildTrack(target) }
+            startState.markPrepared()
+            emit(name = "playback_prepared", status = status())
         } catch (error: Exception) {
             stop("prepare_failed")
             throw error
         }
-        emit(
-            name = "playback_scheduled",
-            status = status(),
-            detail = "target_elapsed_realtime_ms=$targetElapsedRealtimeMs",
-        )
-        scheduler.scheduleAt(targetElapsedRealtimeMs) { actualElapsedRealtimeMs ->
-            val firstCallNs = System.nanoTime()
-            attemptPlaybackStart(
-                playActions = managedTracks.map { managed -> managed.track::play },
-                afterStarted = {
-                    val finalCallNs = System.nanoTime()
-                    val playbackStatus = status()
-                    emit(
-                        name = "play_commands_issued",
-                        status = playbackStatus,
-                        detail = "command_delta_ms=${actualElapsedRealtimeMs - targetElapsedRealtimeMs};" +
-                            "play_call_span_ns=${finalCallNs - firstCallNs}",
-                    )
-                    emitPlaybackObserved(playbackStatus)
-                    if (!stopIfRouteLost(playbackStatus)) {
-                        handler.removeCallbacks(pollRoutes)
-                        handler.postDelayed(pollRoutes, ROUTE_WARMUP_MS)
-                    }
-                },
-                onFailure = ::handlePlaybackStartFailure,
-            )
+    }
+
+    private fun armOrRelease(targetElapsedRealtimeMs: Long) {
+        try {
+            armPrepared(targetElapsedRealtimeMs)
+        } catch (error: Exception) {
+            cancelPrepared("arm_failed")
+            throw error
         }
     }
 

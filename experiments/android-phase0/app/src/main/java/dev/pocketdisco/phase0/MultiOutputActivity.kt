@@ -302,6 +302,10 @@ class MultiOutputActivity : Activity() {
 
     private fun synchronizeCoordinatorClock() {
         val (baseUrl, token) = coordinatorCredentials()
+        cancelCoordinatorTask()
+        clockEstimate = null
+        clockBaseUrl = null
+        clockStatus.text = "Clock: sampling"
         startCoordinatorTask { generation ->
             try {
                 val client = CoordinatorClient(baseUrl, token)
@@ -345,6 +349,8 @@ class MultiOutputActivity : Activity() {
                 }
             } catch (error: Exception) {
                 coordinatorFailure(generation, "clock_sync", error) {
+                    clockEstimate = null
+                    clockBaseUrl = null
                     clockStatus.text = "Clock: synchronization failed"
                 }
             }
@@ -360,25 +366,33 @@ class MultiOutputActivity : Activity() {
         require(baseUrl == clockBaseUrl) {
             "Synchronize the clock again after changing the coordinator URL"
         }
-        val request = CoordinatorTrialRequest(
-            assetId = ClickSignal.SIGNAL_ID,
-            assetSha256 = ClickSignal.PCM_SHA256,
-            requestedPositionMs = 0,
-            effectiveAtUnixMs = Math.addExact(
-                estimate.serverUnixForElapsedRealtime(SystemClock.elapsedRealtime()),
-                COORDINATOR_LEAD_TIME_MS,
-            ),
-        )
-        val idempotencyKey = UUID.randomUUID().toString()
-        startCoordinatorTask { generation ->
-            try {
-                val trial = CoordinatorClient(baseUrl, token).createTrial(request, idempotencyKey)
-                postCoordinatorResult(generation) {
-                    runAction { applyCoordinatorTrial(trial, route, identity) }
+        cancelCoordinatorTask()
+        generatedSyncRecorder.clearActive("replaced")
+        prepareCoordinatorRoute(route)
+        try {
+            val request = CoordinatorTrialRequest(
+                assetId = ClickSignal.SIGNAL_ID,
+                assetSha256 = ClickSignal.PCM_SHA256,
+                requestedPositionMs = 0,
+                effectiveAtUnixMs = Math.addExact(
+                    estimate.serverUnixForElapsedRealtime(SystemClock.elapsedRealtime()),
+                    COORDINATOR_LEAD_TIME_MS,
+                ),
+            )
+            val idempotencyKey = UUID.randomUUID().toString()
+            startCoordinatorTask { generation ->
+                try {
+                    val trial = CoordinatorClient(baseUrl, token).createTrial(request, idempotencyKey)
+                    postCoordinatorResult(generation) {
+                        runAction { applyCoordinatorTrial(trial, identity) }
+                    }
+                } catch (error: Exception) {
+                    coordinatorFailure(generation, "create_trial", error)
                 }
-            } catch (error: Exception) {
-                coordinatorFailure(generation, "create_trial", error)
             }
+        } catch (error: Exception) {
+            controller.cancelPrepared("request_failed")
+            throw error
         }
     }
 
@@ -392,72 +406,74 @@ class MultiOutputActivity : Activity() {
             "Synchronize the clock again after changing the coordinator URL"
         }
         val requestedTrialId = coordinatorTrialId.text.toString().trim()
-        startCoordinatorTask { generation ->
-            try {
-                val trial = CoordinatorClient(baseUrl, token).getTrial(requestedTrialId)
-                postCoordinatorResult(generation) {
-                    runAction { applyCoordinatorTrial(trial, route, identity) }
+        cancelCoordinatorTask()
+        generatedSyncRecorder.clearActive("replaced")
+        prepareCoordinatorRoute(route)
+        try {
+            startCoordinatorTask { generation ->
+                try {
+                    val trial = CoordinatorClient(baseUrl, token).getTrial(requestedTrialId)
+                    postCoordinatorResult(generation) {
+                        runAction { applyCoordinatorTrial(trial, identity) }
+                    }
+                } catch (error: Exception) {
+                    coordinatorFailure(generation, "fetch_trial", error)
                 }
-            } catch (error: Exception) {
-                coordinatorFailure(generation, "fetch_trial", error)
             }
+        } catch (error: Exception) {
+            controller.cancelPrepared("request_failed")
+            throw error
         }
     }
 
     private fun applyCoordinatorTrial(
         trial: CoordinatorTrial,
-        route: CoordinatedOutputRoute,
         identity: GeneratedSyncIdentity,
     ) {
-        requireSafeVolume()
-        val estimate = currentClockEstimate()
-        val plan = try {
-            GeneratedSignalTrialPlanner.plan(
-                trial = trial,
-                clockEstimate = estimate,
-                currentElapsedRealtimeMs = SystemClock.elapsedRealtime(),
+        val planned = try {
+            requireSafeVolume()
+            val estimate = currentClockEstimate()
+            estimate to GeneratedSignalTrialPlanner.plan(
+                trial,
+                estimate,
+                SystemClock.elapsedRealtime(),
             )
         } catch (error: Exception) {
+            controller.cancelPrepared("trial_rejected")
             record(
                 name = "coordinator_trial_rejected",
                 detail = "trial_id=${trial.id};error_type=${error.javaClass.simpleName}",
             )
             throw error
         }
+        val (estimate, plan) = planned
 
-        coordinatorTrialId.setText(plan.trialId)
-        activeTrialId = plan.trialId
-        generatedSyncRecorder.begin(
-            GeneratedSyncContext(
-                identity = identity,
-                trialId = plan.trialId,
-                targetTimestampMs = plan.target.wallTimeMs,
-                targetElapsedRealtimeMs = plan.target.elapsedRealtimeMs,
-                clockUncertaintyMs = estimate.uncertaintyMs,
-            ),
-        )
-        record(
-            name = "coordinator_trial_applied",
-            detail = "trial_id=${plan.trialId};signal_id=${ClickSignal.SIGNAL_ID};" +
-                "target_server_ms=${plan.target.wallTimeMs};" +
-                "target_elapsed_realtime_ms=${plan.target.elapsedRealtimeMs};" +
-                "clock_uncertainty_ms=${estimate.uncertaintyMs}",
-        )
         try {
-            when (route) {
-                CoordinatedOutputRoute.System -> {
-                    controller.scheduleSystemRoute(plan.target.elapsedRealtimeMs)
-                }
-
-                is CoordinatedOutputRoute.Dual -> {
-                    controller.scheduleDual(
-                        route.firstDeviceId,
-                        route.secondDeviceId,
-                        plan.target.elapsedRealtimeMs,
-                    )
-                }
-            }
+            coordinatorTrialId.setText(plan.trialId)
+            activeTrialId = plan.trialId
+            generatedSyncRecorder.begin(
+                GeneratedSyncContext(
+                    identity = identity,
+                    trialId = plan.trialId,
+                    targetTimestampMs = plan.target.wallTimeMs,
+                    targetElapsedRealtimeMs = plan.target.elapsedRealtimeMs,
+                    clockUncertaintyMs = estimate.uncertaintyMs,
+                ),
+            )
+            record(
+                name = "coordinator_trial_applied",
+                detail = "trial_id=${plan.trialId};signal_id=${ClickSignal.SIGNAL_ID};" +
+                    "target_server_ms=${plan.target.wallTimeMs};" +
+                    "target_elapsed_realtime_ms=${plan.target.elapsedRealtimeMs};" +
+                    "clock_uncertainty_ms=${estimate.uncertaintyMs}",
+            )
+            GeneratedSignalTrialPlanner.requireSufficientLead(
+                targetElapsedRealtimeMs = plan.target.elapsedRealtimeMs,
+                currentElapsedRealtimeMs = SystemClock.elapsedRealtime(),
+            )
+            controller.armPrepared(plan.target.elapsedRealtimeMs)
         } catch (error: Exception) {
+            controller.cancelPrepared("arm_failed")
             generatedSyncRecorder.recordFailure("schedule_failed")
             generatedSyncRecorder.clearActive()
             record(
@@ -486,6 +502,16 @@ class MultiOutputActivity : Activity() {
             else -> throw IllegalStateException("Select a coordinator output route")
         }
 
+    private fun prepareCoordinatorRoute(route: CoordinatedOutputRoute) {
+        when (route) {
+            CoordinatedOutputRoute.System -> controller.prepareSystemRoute()
+            is CoordinatedOutputRoute.Dual -> controller.prepareDual(
+                route.firstDeviceId,
+                route.secondDeviceId,
+            )
+        }
+    }
+
     private fun selectedGeneratedIdentity(route: CoordinatedOutputRoute): GeneratedSyncIdentity =
         GeneratedSyncIdentity.fromInput(
             scenarioId = scenarioId.text.toString(),
@@ -509,10 +535,16 @@ class MultiOutputActivity : Activity() {
         clockEstimate ?: throw IllegalStateException("Take seven coordinator time samples first")
 
     private fun startCoordinatorTask(action: (generation: Long) -> Unit) {
-        cancelCoordinatorTask()
+        check(coordinatorTask == null) { "A coordinator request is already running" }
         val generation = coordinatorGeneration
         setCoordinatorBusy(true)
-        coordinatorTask = networkExecutor.submit { action(generation) }
+        try {
+            coordinatorTask = networkExecutor.submit { action(generation) }
+        } catch (error: Exception) {
+            controller.cancelPrepared("request_failed")
+            setCoordinatorBusy(false)
+            throw error
+        }
     }
 
     private fun postCoordinatorResult(generation: Long, action: () -> Unit) {
@@ -534,6 +566,7 @@ class MultiOutputActivity : Activity() {
         cleanup: () -> Unit = {},
     ) {
         postCoordinatorResult(generation) {
+            controller.cancelPrepared("request_failed")
             cleanup()
             record(
                 name = "coordinator_request_failed",
@@ -547,6 +580,7 @@ class MultiOutputActivity : Activity() {
         coordinatorGeneration++
         coordinatorTask?.cancel(true)
         coordinatorTask = null
+        controller.cancelPrepared("cancelled")
         if (::syncClockButton.isInitialized) setCoordinatorBusy(false)
     }
 
@@ -561,6 +595,7 @@ class MultiOutputActivity : Activity() {
         clientId.isEnabled = !busy
         environment.isEnabled = !busy
         outputCategory.isEnabled = !busy
+        safeVolumeConfirmed.isEnabled = !busy
     }
 
     private fun requireSafeVolume() {

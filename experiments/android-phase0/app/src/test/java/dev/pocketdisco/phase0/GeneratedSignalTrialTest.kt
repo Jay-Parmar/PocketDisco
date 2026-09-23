@@ -76,6 +76,21 @@ class GeneratedSignalTrialTest {
         assertEquals(20_000, plan.target.elapsedRealtimeMs)
     }
 
+    @Test
+    fun rechecksLeadBeforeArmingPreparedPlayback() {
+        GeneratedSignalTrialPlanner.requireSufficientLead(
+            targetElapsedRealtimeMs = 20_000,
+            currentElapsedRealtimeMs = 15_000,
+        )
+
+        assertThrows(IllegalArgumentException::class.java) {
+            GeneratedSignalTrialPlanner.requireSufficientLead(
+                targetElapsedRealtimeMs = 20_000,
+                currentElapsedRealtimeMs = 15_001,
+            )
+        }
+    }
+
     private fun trial(
         assetId: String = ClickSignal.SIGNAL_ID,
         assetSha256: String = ClickSignal.PCM_SHA256,
