@@ -15,6 +15,8 @@
 | No Spotify implementation yet | Current policy directly conflicts with the core use case |
 | YouTube trials send controls only | Each visible official player fetches its own media; PocketDisco never handles YouTube media bytes or media URLs |
 | No cross-provider matching in MVP | Matching is unreliable and introduces additional policy conflicts |
+| Run a native Windows audio proof early | Endpoint fanout and clock behavior must be measured before choosing the final Windows product shell |
+| Windows application fanout uses controlled audio only | Provider-controlled audio cannot be captured or duplicated into selected endpoints |
 
 ## Product questions to answer through prototypes/interviews
 
@@ -38,6 +40,9 @@ These do not block the two-phone sync proof. Defaults for the proof: remote/priv
 - WebView IFrame control/position precision and advertisement divergence
 - How Android backgrounding, Doze, audio focus, and network handoff affect the room socket
 - Whether native correction creates audible artifacts
+- Whether Windows Shared Audio is available on the target PC and accessories
+- Whether two Windows render endpoints stay acoustically aligned for ten minutes
+- Which Windows product shell follows the native proof
 
 ## External questions
 

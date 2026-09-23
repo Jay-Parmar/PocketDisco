@@ -32,6 +32,7 @@ Mark these only after inspecting the repository revision under test.
 | `P0-CODE-05` | Separate Android WebView harness keeps the official YouTube IFrame visible and handles readiness and `onAutoplayBlocked` | `Pass` | `experiments/android-phase0` at `09dbc1c`; [control trial smoke probe](device-runs/2026-08-25-nothing-a142-youtube-control.md) | Unit tests and lint passed; app-ID Referer, cue guard, and blocked autoplay were checked on one phone |
 | `P0-CODE-07` | YouTube coordinator routes and Android scheduling carry official IDs and timing control only | `Pass` | `tools/phase0_coordinator` and `experiments/android-phase0` at `09dbc1c` | Coordinator tests and Android unit tests passed; two-phone behavior remains a device gate |
 | `P0-CODE-06` | No Spotify playback adapter, SDK integration, or synchronized Spotify test is present without written approval | `Pass` | Branch scan at `481c4ee` | No Spotify playback implementation is present |
+| `P0-WIN-01` | Windows endpoint enumeration and generated-audio fanout proof are implemented | `Pending` | `experiments/windows-multi-output` | Build and endpoint evidence are pending |
 
 Local validation completed at `2026-08-18T19:01:25Z`. The debug APK was
 3,737,189 bytes with SHA-256
@@ -76,6 +77,7 @@ response is recorded when received and gates any later Apple implementation.
 | `P0-DEV-06` | Logs and network evidence show each phone fetched from the licensed media origin, never the control backend | `Pending` | | Do not retain signed URLs |
 | `P0-DEV-07` | All visible YouTube cases were run on two phones and ads, lifecycle, blocked autoplay, and playlist transitions were recorded | `Pending` | | `Not observed` is not proof of absence |
 | `P0-DEV-08` | A YouTube outcome was recorded as internal experiment, remove or defer, or foreground best-effort candidate | `Pending` | | Production support remains Phase 4 gated |
+| `P0-WIN-02` | Two Windows endpoints completed acoustic onset and drift measurement | `Pending` | | Record Shared Audio and application fanout separately |
 
 ## 5. Hard exit criteria
 

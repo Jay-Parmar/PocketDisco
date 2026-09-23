@@ -68,6 +68,21 @@ For the controllable MVP, use one of:
 
 Do not add arbitrary user uploads until there are clear grants of rights, content moderation, repeat-infringer handling, takedown procedures, storage security, and legal review.
 
+## Windows local output feasibility
+
+Windows output fanout is separate from the playback provider. Windows 11 Shared
+Audio is the preferred route when compatible LE Audio hardware and accessories
+expose it through the system UI. PocketDisco renders once to that system route.
+
+When Shared Audio is unavailable, a controlled-audio proof may create one
+`MediaPlayer` per selected render endpoint and drive them from one
+`MediaTimelineController`. This is an experiment, not a synchronization
+guarantee. Separate endpoints have independent hardware and Bluetooth buffers,
+so final evidence requires acoustic onset and long-run drift measurement.
+
+Application-managed output fanout applies only to audio PocketDisco may decode.
+YouTube and other provider-controlled players must not be captured or duplicated.
+
 ## Go/no-go checklist for each provider
 
 1. Official playback API/SDK exists on Android and later Windows.

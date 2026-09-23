@@ -45,3 +45,7 @@ are authoritative; this planning material is not legal advice.
 - [Redis Streams](https://redis.io/docs/latest/develop/data-types/streams/) — append-only replay/consumer semantics.
 - [React Native Windows](https://microsoft.github.io/react-native-windows/) — Windows React Native support.
 - [React Native Windows native modules](https://microsoft.github.io/react-native-windows/docs/native-platform-modules/) — TypeScript spec/codegen and native implementations.
+- [Windows MediaPlayer playback](https://learn.microsoft.com/en-us/windows/apps/develop/media-playback/play-audio-and-video-with-mediaplayer) - endpoint selection and shared timeline control for multiple players.
+- [Windows Shared Audio](https://blogs.windows.com/windows-insider/2025/10/31/extending-bluetooth-le-audio-on-windows-11-with-shared-audio-preview/) - system-managed sharing to two compatible LE Audio accessories.
+- [Windows LE Audio requirements](https://support.microsoft.com/en-us/windows/hardware/bluetooth/check-if-a-windows-11-device-supports-bluetooth-low-energy-audio) - hardware, driver, and accessory requirements.
+- [WASAPI](https://learn.microsoft.com/windows/win32/coreaudio/wasapi) - lower-level endpoint rendering and clock APIs for a later fallback.

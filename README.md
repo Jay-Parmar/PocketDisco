@@ -4,7 +4,7 @@ Planning workspace for an Android-first social listening app. A host creates a r
 
 ## Recommendation in one paragraph
 
-Build the room and synchronization engine first with audio that you own or are licensed to stream. Use React Native + TypeScript for the Android UI, a small Kotlin playback/timing module, FastAPI WebSockets for the control plane, PostgreSQL for durable data, and Redis for live room state and fan-out. Add a policy-compliant YouTube foreground-player experiment only after the sync engine works. Do **not** make Spotify a launch dependency: its current policy expressly prohibits a product that plays one source to several simultaneous listeners, limits new development-mode apps to five allowlisted users, and forbids commercial streaming integrations. Seek written provider approval before implementing or marketing Spotify group playback.
+Build the room and synchronization engine first with audio that you own or are licensed to stream. Use React Native + TypeScript for the Android UI, a small Kotlin playback/timing module, FastAPI WebSockets for the control plane, PostgreSQL for durable data, and Redis for live room state and fan-out. Keep Android as the first product target while running a small Windows endpoint-routing proof in parallel. Add a policy-compliant YouTube foreground-player experiment only after the sync engine works. Do **not** make Spotify a launch dependency: its current policy expressly prohibits a product that plays one source to several simultaneous listeners, limits new development-mode apps to five allowlisted users, and forbids commercial streaming integrations. Seek written provider approval before implementing or marketing Spotify group playback.
 
 ## Documents
 
@@ -23,7 +23,7 @@ Build the room and synchronization engine first with audio that you own or are l
 PocketDisco/
   apps/
     mobile/                 # React Native Android app
-    windows/                # future; framework decision deferred
+    windows/                # product shell deferred; native audio proof active
   services/
     api/                    # FastAPI REST + WebSocket modular monolith
   packages/
@@ -45,3 +45,7 @@ Phase 0 timing criterion: two Android phones on ordinary Wi-Fi play the same lic
 Early product criterion: after the reconnect-safe room slice exists, a disconnected phone recovers by fetching a fresh room snapshot. Phase 1 adds room snapshot recovery and Phase 2 adds playback reconnect recovery.
 
 These are product experiments, not promises of sample-accurate playback.
+
+Windows Phase 0B criterion: generated test audio reaches two selected Windows
+render endpoints, both endpoints start from one application timeline, and their
+acoustic onset and drift are reported separately from inter-client sync.
