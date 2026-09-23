@@ -1,9 +1,15 @@
 package dev.pocketdisco.phase0
 
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Timer
+import java.util.TimerTask
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 
 data class CoordinatorTime(
     val serverReceiveUnixMs: Long,
@@ -33,7 +39,7 @@ class CoordinatorClient(
     private val baseUrl = ProbeInput.coordinatorBaseUrl(baseUrl)
 
     init {
-        require(bearerToken.isNotBlank()) { "Coordinator bearer token is required" }
+        require(BEARER_TOKEN.matches(bearerToken)) { "Coordinator bearer token is invalid" }
     }
 
     fun getTime(): CoordinatorTime {
@@ -116,13 +122,22 @@ class CoordinatorClient(
         extraHeaders: Map<String, String> = emptyMap(),
     ): JSONObject {
         val connection = URL("$baseUrl$path").openConnection() as HttpURLConnection
+        val timedOut = AtomicBoolean(false)
+        val timeoutTask = object : TimerTask() {
+            override fun run() {
+                timedOut.set(true)
+                connection.disconnect()
+            }
+        }
         try {
+            connection.instanceFollowRedirects = false
             connection.requestMethod = method
             connection.connectTimeout = CONNECT_TIMEOUT_MS
             connection.readTimeout = READ_TIMEOUT_MS
             connection.setRequestProperty("Accept", "application/json")
             connection.setRequestProperty("Authorization", "Bearer $bearerToken")
             extraHeaders.forEach(connection::setRequestProperty)
+            REQUEST_TIMEOUT_TIMER.schedule(timeoutTask, REQUEST_TIMEOUT_MS.toLong())
             if (body != null) {
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json")
@@ -130,8 +145,12 @@ class CoordinatorClient(
             }
 
             val status = connection.responseCode
+            if (connection.contentLengthLong > MAXIMUM_RESPONSE_BYTES) {
+                throw CoordinatorException("Coordinator response exceeded the size limit")
+            }
             val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-            val responseBody = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+            val responseBody = readResponseBody(stream, timedOut)
+            if (timedOut.get()) throw CoordinatorException("Coordinator request timed out")
             val response = try {
                 JSONObject(responseBody)
             } catch (_: Exception) {
@@ -143,10 +162,33 @@ class CoordinatorClient(
                 val message = error?.optString("message").orEmpty().ifBlank { "Coordinator request failed" }
                 throw CoordinatorException("$code: $message")
             }
+            if (timedOut.get()) throw CoordinatorException("Coordinator request timed out")
             return response
+        } catch (_: IOException) {
+            if (timedOut.get()) throw CoordinatorException("Coordinator request timed out")
+            throw CoordinatorException("Coordinator request failed")
         } finally {
+            timeoutTask.cancel()
             connection.disconnect()
         }
+    }
+
+    private fun readResponseBody(stream: InputStream?, timedOut: AtomicBoolean): String {
+        if (stream == null) return ""
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(RESPONSE_CHUNK_BYTES)
+        stream.use {
+            while (true) {
+                if (timedOut.get()) throw CoordinatorException("Coordinator request timed out")
+                val read = it.read(buffer)
+                if (read == -1) break
+                if (output.size() + read > MAXIMUM_RESPONSE_BYTES) {
+                    throw CoordinatorException("Coordinator response exceeded the size limit")
+                }
+                output.write(buffer, 0, read)
+            }
+        }
+        return output.toString(Charsets.UTF_8.name())
     }
 
     private fun parseTrial(
@@ -201,8 +243,13 @@ class CoordinatorClient(
 
     companion object {
         private val IDEMPOTENCY_KEY = Regex("^[A-Za-z0-9._:-]{1,128}$")
+        private val BEARER_TOKEN = Regex("^[A-Za-z0-9_-]{1,128}$")
+        private val REQUEST_TIMEOUT_TIMER = Timer("pocketdisco-coordinator-timeout", true)
         private const val CONNECT_TIMEOUT_MS = 3_000
         private const val READ_TIMEOUT_MS = 3_000
+        private const val REQUEST_TIMEOUT_MS = 3_000
+        private const val MAXIMUM_RESPONSE_BYTES = 4_096
+        private const val RESPONSE_CHUNK_BYTES = 1_024
         private const val MINIMUM_TRIAL_LEAD_MS = 2_000L
         private const val MAXIMUM_TRIAL_LEAD_MS = 30_000L
     }

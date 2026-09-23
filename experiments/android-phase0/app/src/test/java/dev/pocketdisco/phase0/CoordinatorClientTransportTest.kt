@@ -26,7 +26,7 @@ class CoordinatorClientTransportTest {
             val error = assertThrows(IllegalArgumentException::class.java) {
                 CoordinatorClient("http://127.0.0.1:8765", token)
             }
-            assertFalse(error.toString().contains(token))
+            if (token.isNotEmpty()) assertFalse(error.toString().contains(token))
         }
     }
 
