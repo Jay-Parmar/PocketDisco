@@ -18,7 +18,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:text="Two isolated feasibility probes. No room backend and no production app code are included."
+        android:text="Three isolated feasibility probes. No room backend and no production app code are included."
         android:textSize="16sp" />
 
     <Button
