@@ -48,6 +48,8 @@ public static class FanoutSession
         var completion = new PlaybackCompletion(endpoints.Count);
         var startGate = new PlaybackStartGate();
         var controller = new MediaTimelineController();
+        controller.Failed += (_, eventArgs) =>
+            startGate.MarkControllerFailed(eventArgs.ExtendedError.Message);
 
         try
         {

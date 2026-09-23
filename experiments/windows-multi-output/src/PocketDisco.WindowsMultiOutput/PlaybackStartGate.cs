@@ -26,6 +26,16 @@ public sealed class PlaybackStartGate
 
     public void MarkFailed(int playerIndex, string reason)
     {
+        MarkFailure($"output-{playerIndex + 1} failed: {reason}");
+    }
+
+    public void MarkControllerFailed(string reason)
+    {
+        MarkFailure($"timeline controller failed: {reason}");
+    }
+
+    private void MarkFailure(string message)
+    {
         lock (stateLock)
         {
             if (failureException is not null)
@@ -33,8 +43,7 @@ public sealed class PlaybackStartGate
                 return;
             }
 
-            failureException = new InvalidOperationException(
-                $"output-{playerIndex + 1} failed: {reason}");
+            failureException = new InvalidOperationException(message);
             failure.TrySetException(failureException);
         }
     }

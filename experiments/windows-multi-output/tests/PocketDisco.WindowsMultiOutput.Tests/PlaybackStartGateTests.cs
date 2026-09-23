@@ -33,4 +33,20 @@ public sealed class PlaybackStartGateTests
             async () => await gate.Failure);
         Assert.Contains("render stopped", error.Message);
     }
+
+    [TestMethod]
+    public async Task RejectsStartAfterControllerFailure()
+    {
+        var gate = new PlaybackStartGate();
+        var commandIssued = false;
+
+        gate.MarkControllerFailed("clock stopped");
+
+        var error = Assert.ThrowsExactly<InvalidOperationException>(
+            () => gate.IssueStart(() => commandIssued = true));
+        Assert.IsFalse(commandIssued);
+        Assert.Contains("controller", error.Message);
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            async () => await gate.Failure);
+    }
 }
