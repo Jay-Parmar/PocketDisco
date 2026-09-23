@@ -68,6 +68,23 @@ For the controllable MVP, use one of:
 
 Do not add arbitrary user uploads until there are clear grants of rights, content moderation, repeat-infringer handling, takedown procedures, storage security, and legal review.
 
+## Local output feasibility
+
+Output fanout is separate from the playback provider. It does not change the
+rule that every PocketDisco client obtains authorized media independently.
+
+On Android, a normal application cannot create a guaranteed group from two
+arbitrary Bluetooth headphones. PocketDisco may use an output group already
+managed by Android, an OEM sharing feature, or a supported LE Audio route. The
+experimental dual-track probe may request one preferred output per track for
+audio PocketDisco is allowed to decode, but a preference is not proof of the
+actual route. The probe passes only when Android reports two distinct active
+destinations and an external recording measures their acoustic skew.
+
+YouTube and other provider-controlled players do not expose PCM to PocketDisco.
+Their sound may use a system-managed shared route, but PocketDisco must not
+capture, extract, or duplicate it into application-managed outputs.
+
 ## Go/no-go checklist for each provider
 
 1. Official playback API/SDK exists on Android and later Windows.
@@ -78,3 +95,5 @@ Do not add arbitrary user uploads until there are clear grants of rights, conten
 6. Playback position and seek precision are sufficient for the product target.
 7. App review/quota/partner access is realistically attainable.
 8. Provider outage, unavailable-track, region, explicit-content, and child-user behavior is designed.
+9. The platform exposes the required single or grouped output route through a public API.
+10. Application-managed fanout is used only for media PocketDisco is permitted to decode.

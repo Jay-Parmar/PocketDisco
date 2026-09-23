@@ -15,6 +15,8 @@
 | No Spotify implementation yet | Current policy directly conflicts with the core use case |
 | YouTube trials send controls only | Each visible official player fetches its own media; PocketDisco never handles YouTube media bytes or media URLs |
 | No cross-provider matching in MVP | Matching is unreliable and introduces additional policy conflicts |
+| Android multi-output is capability-gated | Third-party apps cannot guarantee two arbitrary Bluetooth routes; use a system-managed group when available and keep dual-track routing experimental |
+| Application fanout requires controlled audio | Provider-controlled players such as YouTube do not expose media bytes for duplication |
 
 ## Product questions to answer through prototypes/interviews
 
@@ -38,6 +40,8 @@ These do not block the two-phone sync proof. Defaults for the proof: remote/priv
 - WebView IFrame control/position precision and advertisement divergence
 - How Android backgrounding, Doze, audio focus, and network handoff affect the room socket
 - Whether native correction creates audible artifacts
+- Whether target Android devices expose a system-managed shared output route
+- Whether two public `AudioTrack` routes remain distinct and acoustically aligned on tested hardware
 
 ## External questions
 
