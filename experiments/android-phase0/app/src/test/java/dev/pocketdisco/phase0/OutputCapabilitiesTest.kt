@@ -1,5 +1,6 @@
 package dev.pocketdisco.phase0
 
+import android.bluetooth.BluetoothStatusCodes
 import android.media.AudioDeviceInfo
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -51,8 +52,18 @@ class OutputCapabilitiesTest {
 
     @Test
     fun mapsBluetoothFeatureResults() {
-        assertEquals(FeatureSupport.SUPPORTED, FeatureSupport.fromPlatformResult(1))
-        assertEquals(FeatureSupport.NOT_SUPPORTED, FeatureSupport.fromPlatformResult(0))
+        assertEquals(
+            FeatureSupport.SUPPORTED,
+            FeatureSupport.fromPlatformResult(BluetoothStatusCodes.FEATURE_SUPPORTED),
+        )
+        assertEquals(
+            FeatureSupport.NOT_SUPPORTED,
+            FeatureSupport.fromPlatformResult(BluetoothStatusCodes.FEATURE_NOT_SUPPORTED),
+        )
+        assertEquals(
+            FeatureSupport.NOT_CONFIGURED,
+            FeatureSupport.fromPlatformResult(BluetoothStatusCodes.FEATURE_NOT_CONFIGURED),
+        )
         assertEquals(FeatureSupport.UNKNOWN, FeatureSupport.fromPlatformResult(null))
         assertEquals(FeatureSupport.UNKNOWN, FeatureSupport.fromPlatformResult(99))
     }

@@ -1,6 +1,7 @@
 package dev.pocketdisco.phase0
 
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothStatusCodes
 import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -86,14 +87,16 @@ enum class OutputTargetRole {
 enum class FeatureSupport {
     SUPPORTED,
     NOT_SUPPORTED,
+    NOT_CONFIGURED,
     PERMISSION_REQUIRED,
     UNKNOWN,
     ;
 
     companion object {
         fun fromPlatformResult(result: Int?): FeatureSupport = when (result) {
-            1 -> SUPPORTED
-            0 -> NOT_SUPPORTED
+            BluetoothStatusCodes.FEATURE_SUPPORTED -> SUPPORTED
+            BluetoothStatusCodes.FEATURE_NOT_SUPPORTED -> NOT_SUPPORTED
+            BluetoothStatusCodes.FEATURE_NOT_CONFIGURED -> NOT_CONFIGURED
             else -> UNKNOWN
         }
     }
