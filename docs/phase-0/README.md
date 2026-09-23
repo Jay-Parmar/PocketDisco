@@ -16,6 +16,7 @@ testing documents.
 - [Phase 0 gate checklist](gate-checklist.md)
 - [Physical-device smoke probe records](device-runs/)
 - [Windows multi-output run record](device-runs/2026-09-23-windows-multi-output.md)
+- [Mixed-platform sync run record](device-runs/2026-09-23-mixed-platform-sync.md)
 
 ## Scope
 

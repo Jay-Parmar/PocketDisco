@@ -34,6 +34,7 @@ Mark these only after inspecting the repository revision under test.
 | `P0-CODE-06` | No Spotify playback adapter, SDK integration, or synchronized Spotify test is present without written approval | `Pass` | Branch scan at `481c4ee` | No Spotify playback implementation is present |
 | `P0-WIN-01` | Windows endpoint enumeration and generated-audio fanout proof are implemented | `Pass` | `experiments/windows-multi-output` at `cc82677`; [run record](device-runs/2026-09-23-windows-multi-output.md) | 45 tests passed; 20 of 20 starts and a 600-second completion run passed on USB plus built-in endpoints |
 | `P0-OUT-01` | Android output capability and actual-route diagnostics are implemented | `Pass` | `experiments/android-phase0` at `0f8c5ea`; [one-phone route probe](device-runs/2026-09-23-nothing-a142-multi-output.md) | 44 unit tests passed, lint passed, and one system route was observed; two-output evidence remains pending |
+| `P0-MIX-01` | Generated-signal scheduling and separate command and player timing work across physical Android, emulator, and Windows clients | `Pass` | Android, Windows, coordinator, and analyzer code at `d977dad`; [mixed-platform run](device-runs/2026-09-23-mixed-platform-sync.md) | 10 of 10 starts had complete command and player records; acoustic onset was not measured |
 
 Local validation completed at `2026-08-18T19:01:25Z`. The debug APK was
 3,737,189 bytes with SHA-256
@@ -56,6 +57,13 @@ Twenty of 20 scheduled starts and one 600-second playback run completed on one
 USB endpoint plus the built-in endpoint. This passes the code artifact gate but
 does not prove acoustic synchronization or two-Bluetooth-device support. See the
 [sanitized run record](device-runs/2026-09-23-windows-multi-output.md).
+
+The mixed-platform generated-signal run completed on `2026-09-23` UTC at
+`d977dad`. Ten of ten trials had complete command and player-state records from
+the physical Android phone, Android emulator, and Windows client. This passes
+the mixed protocol artifact but does not satisfy any acoustic, two-phone,
+rights, or Bluetooth gate. See the
+[mixed-platform run record](device-runs/2026-09-23-mixed-platform-sync.md).
 
 ## 3. External and rights evidence
 
