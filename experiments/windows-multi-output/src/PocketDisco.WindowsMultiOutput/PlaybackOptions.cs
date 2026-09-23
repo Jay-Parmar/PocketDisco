@@ -114,7 +114,7 @@ public static class PlaybackOptionsParser
 
     private static bool TryParseDeviceIndexes(string value, out int[]? indexes)
     {
-        var parts = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var parts = value.Split(',', StringSplitOptions.TrimEntries);
         if (parts.Length != 2)
         {
             indexes = null;

@@ -58,4 +58,15 @@ public sealed class PlaybackOptionsParserTests
         Assert.IsNotNull(result.Error);
         Assert.Contains("Unknown option", result.Error);
     }
+
+    [TestMethod]
+    [DataRow("0,,1")]
+    [DataRow("0,1,")]
+    [DataRow(",0,1")]
+    public void RejectsMissingDeviceTokens(string value)
+    {
+        var result = PlaybackOptionsParser.Parse(["--devices", value]);
+
+        Assert.IsFalse(result.IsValid);
+    }
 }
