@@ -14,6 +14,10 @@ public sealed class ProbeInfoTests
     {
         Assert.Contains("--coordinator-url", ProbeInfo.Usage);
         Assert.Contains("--coordinator-trial", ProbeInfo.Usage);
+        Assert.Contains("--scenario-id", ProbeInfo.Usage);
+        Assert.Contains("--client-id", ProbeInfo.Usage);
+        Assert.Contains("--output-category", ProbeInfo.Usage);
+        Assert.Contains("--sync-telemetry-file", ProbeInfo.Usage);
         Assert.Contains("POCKETDISCO_COORDINATOR_TOKEN", ProbeInfo.Usage);
         Assert.DoesNotContain("--coordinator-token", ProbeInfo.Usage);
     }

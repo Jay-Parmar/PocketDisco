@@ -19,10 +19,15 @@ public static class ProbeInfo
           --coordinator-url URL   Phase 0 coordinator base URL
           --coordinator-trial X   Create a trial or fetch its UUID
           --telemetry-file PATH   Save sanitized NDJSON evidence
+          --scenario-id ID        Shared mixed-platform scenario ID
+          --client-id ID          Stable Windows client ID
+          --output-category X     built_in, wired, bluetooth, usb, virtual, or mixed
+          --sync-telemetry-file P Save schema v2 mixed-platform NDJSON
 
         Coordinator mode:
           Set POCKETDISCO_COORDINATOR_TOKEN in the process environment.
           Use --coordinator-trial create or a canonical trial UUID.
           Local start timing options cannot be combined with coordinator mode.
+          Schema v2 telemetry options must be supplied together.
         """;
 }

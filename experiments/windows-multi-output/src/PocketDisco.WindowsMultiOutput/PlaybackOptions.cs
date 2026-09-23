@@ -8,12 +8,19 @@ public sealed record PlaybackOptions(
     TimeSpan StartDelay,
     long? TargetUnixMilliseconds,
     CoordinatorPlaybackOptions? Coordinator,
+    GeneratedSyncTelemetryOptions? SyncTelemetry,
     string? TelemetryPath);
 
 public sealed record CoordinatorPlaybackOptions(string BaseUrl, Guid? TrialId)
 {
     public bool CreateTrial => !TrialId.HasValue;
 }
+
+public sealed record GeneratedSyncTelemetryOptions(
+    string ScenarioId,
+    string ClientId,
+    string OutputCategory,
+    string Path);
 
 public sealed record PlaybackOptionsParseResult(PlaybackOptions? Options, string? Error)
 {
@@ -24,6 +31,8 @@ public static class PlaybackOptionsParser
 {
     private static readonly TimeSpan DefaultDuration = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan DefaultStartDelay = TimeSpan.FromSeconds(5);
+    private static readonly string[] SyncOutputCategories =
+        ["built_in", "wired", "bluetooth", "usb", "virtual", "mixed"];
 
     public static PlaybackOptionsParseResult Parse(IReadOnlyList<string> arguments)
     {
@@ -33,6 +42,10 @@ public static class PlaybackOptionsParser
         long? targetUnixMilliseconds = null;
         string? coordinatorUrl = null;
         Guid? coordinatorTrialId = null;
+        string? scenarioId = null;
+        string? clientId = null;
+        string? outputCategory = null;
+        string? syncTelemetryPath = null;
         string? telemetryPath = null;
         var hasStartDelay = false;
         var hasCoordinatorUrl = false;
@@ -47,6 +60,10 @@ public static class PlaybackOptionsParser
                 and not "--start-at-unix-ms"
                 and not "--coordinator-url"
                 and not "--coordinator-trial"
+                and not "--scenario-id"
+                and not "--client-id"
+                and not "--output-category"
+                and not "--sync-telemetry-file"
                 and not "--telemetry-file")
             {
                 return Invalid($"Unknown option: {option}.");
@@ -121,6 +138,37 @@ public static class PlaybackOptionsParser
                     }
 
                     break;
+                case "--scenario-id":
+                    if (!TryNormalizeIdentity(value, out scenarioId))
+                    {
+                        return Invalid("--scenario-id must be 1 to 100 characters without controls.");
+                    }
+
+                    break;
+                case "--client-id":
+                    if (!TryNormalizeIdentity(value, out clientId))
+                    {
+                        return Invalid("--client-id must be 1 to 100 characters without controls.");
+                    }
+
+                    break;
+                case "--output-category":
+                    if (!SyncOutputCategories.Contains(value, StringComparer.Ordinal))
+                    {
+                        return Invalid(
+                            "--output-category must be built_in, wired, bluetooth, usb, virtual, or mixed.");
+                    }
+
+                    outputCategory = value;
+                    break;
+                case "--sync-telemetry-file":
+                    if (string.IsNullOrWhiteSpace(value))
+                    {
+                        return Invalid("--sync-telemetry-file must not be empty.");
+                    }
+
+                    syncTelemetryPath = value;
+                    break;
                 case "--telemetry-file":
                     if (string.IsNullOrWhiteSpace(value))
                     {
@@ -160,6 +208,34 @@ public static class PlaybackOptionsParser
                 coordinatorTrialId);
         }
 
+        var syncOptionCount = new[]
+        {
+            scenarioId,
+            clientId,
+            outputCategory,
+            syncTelemetryPath,
+        }.Count(value => value is not null);
+        if (syncOptionCount is > 0 and < 4)
+        {
+            return Invalid(
+                "--scenario-id, --client-id, --output-category, and --sync-telemetry-file must be used together.");
+        }
+
+        GeneratedSyncTelemetryOptions? syncTelemetry = null;
+        if (syncOptionCount == 4)
+        {
+            if (coordinator is null)
+            {
+                return Invalid("Sync telemetry options require coordinator mode.");
+            }
+
+            syncTelemetry = new GeneratedSyncTelemetryOptions(
+                scenarioId!,
+                clientId!,
+                outputCategory!,
+                syncTelemetryPath!);
+        }
+
         return new PlaybackOptionsParseResult(
             new PlaybackOptions(
                 deviceIndexes,
@@ -167,6 +243,7 @@ public static class PlaybackOptionsParser
                 startDelay,
                 targetUnixMilliseconds,
                 coordinator,
+                syncTelemetry,
                 telemetryPath),
             null);
     }
@@ -198,6 +275,18 @@ public static class PlaybackOptionsParser
         int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out number)
         && number >= minimum
         && number <= maximum;
+
+    private static bool TryNormalizeIdentity(string value, out string? normalized)
+    {
+        normalized = value.Trim();
+        if (normalized.Length is < 1 or > 100 || normalized.Any(char.IsControl))
+        {
+            normalized = null;
+            return false;
+        }
+
+        return true;
+    }
 
     private static PlaybackOptionsParseResult Invalid(string error) => new(null, error);
 }

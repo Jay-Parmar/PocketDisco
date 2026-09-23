@@ -180,4 +180,122 @@ public sealed class PlaybackOptionsParserTests
         Assert.IsFalse(result.IsValid);
         Assert.Contains("Unknown option", result.Error!);
     }
+
+    [TestMethod]
+    public void ParsesCompleteCoordinatorSyncTelemetryOptions()
+    {
+        var result = PlaybackOptionsParser.Parse(
+            [
+                "--devices", "0,1",
+                "--coordinator-url", "http://127.0.0.1:8765",
+                "--coordinator-trial", "create",
+                "--scenario-id", "  mixed-01  ",
+                "--client-id", " windows-laptop ",
+                "--output-category", "mixed",
+                "--sync-telemetry-file", "mixed-01-windows.ndjson",
+            ]);
+
+        Assert.IsTrue(result.IsValid);
+        var telemetry = result.Options!.SyncTelemetry!;
+        Assert.AreEqual("mixed-01", telemetry.ScenarioId);
+        Assert.AreEqual("windows-laptop", telemetry.ClientId);
+        Assert.AreEqual("mixed", telemetry.OutputCategory);
+        Assert.AreEqual("mixed-01-windows.ndjson", telemetry.Path);
+    }
+
+    [TestMethod]
+    [DataRow("built_in")]
+    [DataRow("wired")]
+    [DataRow("bluetooth")]
+    [DataRow("usb")]
+    [DataRow("virtual")]
+    [DataRow("mixed")]
+    public void AcceptsEverySyncOutputCategory(string outputCategory)
+    {
+        var result = ParseSyncTelemetry(outputCategory: outputCategory);
+
+        Assert.IsTrue(result.IsValid);
+        Assert.AreEqual(outputCategory, result.Options!.SyncTelemetry!.OutputCategory);
+    }
+
+    [TestMethod]
+    [DataRow("--scenario-id", "mixed-01")]
+    [DataRow("--client-id", "windows-laptop")]
+    [DataRow("--output-category", "mixed")]
+    [DataRow("--sync-telemetry-file", "run.ndjson")]
+    public void RejectsIncompleteSyncTelemetryOptions(string option, string value)
+    {
+        var result = PlaybackOptionsParser.Parse(
+            [
+                "--devices", "0,1",
+                "--coordinator-url", "http://127.0.0.1:8765",
+                "--coordinator-trial", "create",
+                option, value,
+            ]);
+
+        Assert.IsFalse(result.IsValid);
+        Assert.Contains("together", result.Error!);
+    }
+
+    [TestMethod]
+    public void RejectsSyncTelemetryOutsideCoordinatorMode()
+    {
+        var result = PlaybackOptionsParser.Parse(
+            [
+                "--devices", "0,1",
+                "--scenario-id", "mixed-01",
+                "--client-id", "windows-laptop",
+                "--output-category", "mixed",
+                "--sync-telemetry-file", "run.ndjson",
+            ]);
+
+        Assert.IsFalse(result.IsValid);
+        Assert.Contains("coordinator", result.Error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [TestMethod]
+    [DataRow("--scenario-id", " ")]
+    [DataRow("--scenario-id", "mixed\n01")]
+    [DataRow("--client-id", " ")]
+    [DataRow("--client-id", "windows\nlaptop")]
+    public void RejectsUnsafeSyncTelemetryIdentity(string option, string value)
+    {
+        var scenarioId = option == "--scenario-id" ? value : "mixed-01";
+        var clientId = option == "--client-id" ? value : "windows-laptop";
+
+        var result = ParseSyncTelemetry(scenarioId, clientId);
+
+        Assert.IsFalse(result.IsValid);
+    }
+
+    [TestMethod]
+    public void RejectsOversizedSyncTelemetryIdentity()
+    {
+        var result = ParseSyncTelemetry(scenarioId: new string('s', 101));
+
+        Assert.IsFalse(result.IsValid);
+    }
+
+    [TestMethod]
+    public void RejectsInvalidSyncOutputCategory()
+    {
+        var result = ParseSyncTelemetry(outputCategory: "headphones");
+
+        Assert.IsFalse(result.IsValid);
+    }
+
+    private static PlaybackOptionsParseResult ParseSyncTelemetry(
+        string scenarioId = "mixed-01",
+        string clientId = "windows-laptop",
+        string outputCategory = "mixed") =>
+        PlaybackOptionsParser.Parse(
+            [
+                "--devices", "0,1",
+                "--coordinator-url", "http://127.0.0.1:8765",
+                "--coordinator-trial", "create",
+                "--scenario-id", scenarioId,
+                "--client-id", clientId,
+                "--output-category", outputCategory,
+                "--sync-telemetry-file", "run.ndjson",
+            ]);
 }
