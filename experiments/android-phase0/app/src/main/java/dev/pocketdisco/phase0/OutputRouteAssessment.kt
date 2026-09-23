@@ -25,6 +25,22 @@ data class OutputRouteResult(
     val actualDeviceIds: Set<Int>,
 )
 
+class OutputRouteTracker {
+    private var distinctRouteObserved = false
+
+    fun observe(state: OutputRouteState): Boolean {
+        if (state == OutputRouteState.DISTINCT_ROUTES) {
+            distinctRouteObserved = true
+            return false
+        }
+        return distinctRouteObserved
+    }
+
+    fun reset() {
+        distinctRouteObserved = false
+    }
+}
+
 object OutputRouteAssessment {
     fun evaluate(
         observations: List<TrackRouteObservation>,

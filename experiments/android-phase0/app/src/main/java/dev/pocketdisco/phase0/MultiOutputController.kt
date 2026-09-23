@@ -59,22 +59,11 @@ class MultiOutputController(
         .setOnAudioFocusChangeListener(::onAudioFocusChange)
         .build()
     private val managedTracks = mutableListOf<ManagedTrack>()
+    private val routeTracker = OutputRouteTracker()
     private var mode: AndroidRouteMode? = null
-    private var lastRouteState: OutputRouteState? = null
     private val pollRoutes = object : Runnable {
         override fun run() {
-            if (managedTracks.isEmpty()) return
-            val status = status()
-            emit("route_sample", status)
-            if (
-                lastRouteState == OutputRouteState.DISTINCT_ROUTES &&
-                status.route.state != OutputRouteState.DISTINCT_ROUTES
-            ) {
-                emit("route_lost", status)
-                stop("route_lost")
-                return
-            }
-            lastRouteState = status.route.state
+            if (!observeRoute("route_sample")) return
             handler.postDelayed(this, ROUTE_POLL_INTERVAL_MS)
         }
     }
@@ -142,7 +131,7 @@ class MultiOutputController(
         }
         managedTracks.clear()
         mode = null
-        lastRouteState = null
+        routeTracker.reset()
         audioManager.abandonAudioFocusRequest(focusRequest)
         if (stoppedStatus != null) emit("playback_stopped", stoppedStatus, "reason=$reason")
     }
@@ -176,12 +165,14 @@ class MultiOutputController(
             val firstCallNs = System.nanoTime()
             managedTracks.forEach { it.track.play() }
             val finalCallNs = System.nanoTime()
+            val playbackStatus = status()
             emit(
                 name = "playback_started",
-                status = status(),
+                status = playbackStatus,
                 detail = "command_delta_ms=${actualElapsedRealtimeMs - targetElapsedRealtimeMs};" +
                     "play_call_span_ns=${finalCallNs - firstCallNs}",
             )
+            if (stopIfRouteLost(playbackStatus)) return@scheduleAt
             handler.removeCallbacks(pollRoutes)
             handler.postDelayed(pollRoutes, ROUTE_WARMUP_MS)
         }
@@ -205,7 +196,7 @@ class MultiOutputController(
             lateinit var listener: AudioRouting.OnRoutingChangedListener
             listener = AudioRouting.OnRoutingChangedListener {
                 if (managedTracks.any { it.track === track }) {
-                    emit("routing_changed", status())
+                    observeRoute("routing_changed")
                 }
             }
             track.addOnRoutingChangedListener(listener, handler)
@@ -259,6 +250,20 @@ class MultiOutputController(
             emit("audio_focus_lost", managedTracks.takeIf { it.isNotEmpty() }?.let { status() }, "change=$change")
             stop("audio_focus_lost")
         }
+    }
+
+    private fun observeRoute(eventName: String): Boolean {
+        if (managedTracks.isEmpty()) return false
+        val currentStatus = status()
+        emit(eventName, currentStatus)
+        return !stopIfRouteLost(currentStatus)
+    }
+
+    private fun stopIfRouteLost(currentStatus: MultiOutputStatus): Boolean {
+        if (!routeTracker.observe(currentStatus.route.state)) return false
+        emit("route_lost", currentStatus)
+        stop("route_lost")
+        return true
     }
 
     private fun emit(
