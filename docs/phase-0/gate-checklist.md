@@ -33,6 +33,7 @@ Mark these only after inspecting the repository revision under test.
 | `P0-CODE-07` | YouTube coordinator routes and Android scheduling carry official IDs and timing control only | `Pass` | `tools/phase0_coordinator` and `experiments/android-phase0` at `09dbc1c` | Coordinator tests and Android unit tests passed; two-phone behavior remains a device gate |
 | `P0-CODE-06` | No Spotify playback adapter, SDK integration, or synchronized Spotify test is present without written approval | `Pass` | Branch scan at `481c4ee` | No Spotify playback implementation is present |
 | `P0-WIN-01` | Windows endpoint enumeration and generated-audio fanout proof are implemented | `Pass` | `experiments/windows-multi-output` at `cc82677`; [run record](device-runs/2026-09-23-windows-multi-output.md) | 45 tests passed; 20 of 20 starts and a 600-second completion run passed on USB plus built-in endpoints |
+| `P0-OUT-01` | Android output capability and actual-route diagnostics are implemented | `Pass` | `experiments/android-phase0` at `0f8c5ea`; [one-phone route probe](device-runs/2026-09-23-nothing-a142-multi-output.md) | 44 unit tests passed, lint passed, and one system route was observed; two-output evidence remains pending |
 
 Local validation completed at `2026-08-18T19:01:25Z`. The debug APK was
 3,737,189 bytes with SHA-256
@@ -84,6 +85,7 @@ response is recorded when received and gates any later Apple implementation.
 | `P0-DEV-07` | All visible YouTube cases were run on two phones and ads, lifecycle, blocked autoplay, and playlist transitions were recorded | `Pending` | | `Not observed` is not proof of absence |
 | `P0-DEV-08` | A YouTube outcome was recorded as internal experiment, remove or defer, or foreground best-effort candidate | `Pending` | | Production support remains Phase 4 gated |
 | `P0-WIN-02` | Two Windows endpoints completed acoustic onset and drift measurement | `Pending` | [Windows run record](device-runs/2026-09-23-windows-multi-output.md) | Application fanout completed, but isolated acoustic capture and Shared Audio evidence are pending |
+| `P0-OUT-02` | Two distinct Android output routes and their acoustic skew were measured | `Pending` | | Emulator evidence is not valid for this row |
 
 ## 5. Hard exit criteria
 

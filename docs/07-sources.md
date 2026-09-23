@@ -40,6 +40,10 @@ are authoritative; this planning material is not legal advice.
 - [Media3 troubleshooting](https://developer.android.com/media/media3/exoplayer/troubleshooting) — seeking limitations, especially VBR MP3, and background playback considerations.
 - [Media3 background playback](https://developer.android.com/media/media3/session/background-playback) — `MediaSessionService` and foreground-service permissions/lifecycle.
 - [Android `SystemClock`](https://developer.android.com/reference/android/os/SystemClock) — monotonic elapsed-realtime clock used for interval/scheduling calculations.
+- [Android audio routing](https://developer.android.com/reference/android/media/AudioRouting) - preferred-device requests and actual-route observation.
+- [Android combined audio routing](https://source.android.com/docs/core/audio/combined-audio-routing) - privileged multi-device strategy routing and platform support requirements.
+- [Android LE Audio overview](https://developer.android.com/develop/connectivity/bluetooth/ble-audio/overview) - LE Audio support and capability checks.
+- [Android emulator limitations](https://developer.android.com/studio/run/advanced-emulator-usage#limitations) - absence of virtual Bluetooth hardware.
 - [FastAPI WebSockets](https://fastapi.tiangolo.com/advanced/websockets/) — framework WebSocket support.
 - [Redis Pub/Sub delivery semantics](https://redis.io/docs/latest/develop/pubsub/) — at-most-once behavior and recommendation to use Streams for stronger guarantees.
 - [Redis Streams](https://redis.io/docs/latest/develop/data-types/streams/) — append-only replay/consumer semantics.

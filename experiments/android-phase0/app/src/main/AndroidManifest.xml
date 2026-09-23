@@ -13,6 +13,9 @@
         android:theme="@style/Theme.PocketDiscoPhase0"
         android:usesCleartextTraffic="true">
         <activity
+            android:name=".MultiOutputActivity"
+            android:exported="false" />
+        <activity
             android:name=".YouTubeActivity"
             android:exported="false" />
         <activity

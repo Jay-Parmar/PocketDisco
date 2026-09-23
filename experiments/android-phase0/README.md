@@ -1,6 +1,6 @@
 # PocketDisco Phase 0 Android experiment
 
-This is a throwaway native Android experiment. It is not the React Native product scaffold and it has no room backend. It tests the two Android uncertainties called out in the committed build plan.
+This is a throwaway native Android experiment. It is not the React Native product scaffold and it has no room backend. It tests three Android feasibility questions: licensed-audio timing, foreground YouTube control, and local output routing.
 
 ## Requirements
 
@@ -73,3 +73,21 @@ coordinator run checks the request and scheduling path, but it cannot establish
 cross-device synchronization.
 
 YouTube output is experimental and best effort. Different ads, availability, buffering, and playlist behavior can prevent tight synchronization.
+
+## Multi-output trial
+
+1. Open the Android multi-output probe and refresh the outputs.
+2. Confirm the reported LE Audio capabilities.
+3. Use the system output switcher to configure any OS-managed sharing route.
+4. Set both devices to a safe volume and confirm the checkbox.
+5. Run the current system route. Android 36 reports every active destination;
+   earlier versions report one routed device.
+6. If two direct media targets are listed, select different targets and run the
+   dual-track experiment.
+7. Confirm that the result reaches `distinct_routes`. A successful preference
+   request is not sufficient.
+8. Export raw telemetry, then measure both outputs with isolated microphones.
+
+The probe generates its own PCM click. It cannot duplicate YouTube audio. The
+emulator can exercise screen and failure behavior but cannot prove Bluetooth
+routing or acoustic synchronization.

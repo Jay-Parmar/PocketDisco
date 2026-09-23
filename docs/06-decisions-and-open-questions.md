@@ -17,6 +17,8 @@
 | No cross-provider matching in MVP | Matching is unreliable and introduces additional policy conflicts |
 | Run a native Windows audio proof early | Endpoint fanout and clock behavior must be measured before choosing the final Windows product shell |
 | Windows application fanout uses controlled audio only | Provider-controlled audio cannot be captured or duplicated into selected endpoints |
+| Android multi-output is capability-gated | Third-party apps cannot guarantee two arbitrary Bluetooth routes; use a system-managed group when available and keep dual-track routing experimental |
+| Application fanout requires controlled audio | Provider-controlled players such as YouTube do not expose media bytes for duplication |
 
 ## Product questions to answer through prototypes/interviews
 
@@ -43,6 +45,8 @@ These do not block the two-phone sync proof. Defaults for the proof: remote/priv
 - Whether Windows Shared Audio is available on the target PC and accessories
 - Whether two Windows render endpoints stay acoustically aligned for ten minutes
 - Which Windows product shell follows the native proof
+- Whether target Android devices expose a system-managed shared output route
+- Whether two public `AudioTrack` routes remain distinct and acoustically aligned on tested hardware
 
 ## External questions
 

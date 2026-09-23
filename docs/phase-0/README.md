@@ -11,13 +11,14 @@ testing documents.
 - [Two-phone Media3 test protocol](two-phone-test-protocol.md)
 - [Visible YouTube experiment protocol](youtube-experiment-protocol.md)
 - [Windows multi-output probe protocol](windows-multi-output-protocol.md)
+- [Android multi-output probe protocol](android-multi-output-protocol.md)
 - [Phase 0 gate checklist](gate-checklist.md)
 - [Physical-device smoke probe records](device-runs/)
 - [Windows multi-output run record](device-runs/2026-09-23-windows-multi-output.md)
 
 ## Scope
 
-Phase 0 answers five questions:
+Phase 0 answers six questions:
 
 1. Can two Android phones start the same owned or licensed MP4/AAC asset within
    the provisional built-in-speaker skew target?
@@ -29,6 +30,7 @@ Phase 0 answers five questions:
    or should it be retained internally or removed?
 5. Can Windows render generated audio to selected local endpoints with measured
    onset and drift?
+6. Can a target Android device expose and verify a supported shared output route?
 
 Phase 0 does not add Spotify playback, public discovery, voice chat, production
 room services, or a complete application scaffold. The control backend must not
