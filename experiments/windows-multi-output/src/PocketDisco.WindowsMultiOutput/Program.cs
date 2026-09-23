@@ -36,6 +36,27 @@ if (!selection.IsValid)
     return;
 }
 
+CoordinatorClient? coordinatorClient = null;
+CoordinatorStartResolver? coordinatorStartResolver = null;
+if (options.Coordinator is not null)
+{
+    try
+    {
+        var bearerToken = CoordinatorTokenSource.Read(Environment.GetEnvironmentVariable);
+        coordinatorClient = new CoordinatorClient(options.Coordinator.BaseUrl, bearerToken);
+        coordinatorStartResolver = new CoordinatorStartResolver(
+            coordinatorClient,
+            options.Coordinator);
+    }
+    catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+    {
+        Console.Error.WriteLine($"Coordinator setup failed: {exception.Message}");
+        Environment.ExitCode = 2;
+        return;
+    }
+}
+
+using var coordinatorClientLifetime = coordinatorClient;
 Console.WriteLine("Selected outputs:");
 foreach (var endpoint in selection.Endpoints)
 {
@@ -53,12 +74,31 @@ Console.CancelKeyPress += (_, eventArgs) =>
 FanoutRunResult result;
 try
 {
-    result = await FanoutSession.RunAsync(
-        selection.Endpoints,
-        options.Duration,
-        options.StartDelay,
-        options.TargetUnixMilliseconds,
-        cancellation.Token);
+    if (coordinatorStartResolver is null)
+    {
+        result = await FanoutSession.RunAsync(
+            selection.Endpoints,
+            options.Duration,
+            options.StartDelay,
+            options.TargetUnixMilliseconds,
+            cancellation.Token);
+    }
+    else
+    {
+        result = await FanoutSession.RunCoordinatorAsync(
+            selection.Endpoints,
+            options.Duration,
+            coordinatorStartResolver,
+            context =>
+            {
+                Console.WriteLine($"Coordinator trial: {context.TrialId:D}");
+                Console.WriteLine(
+                    $"Coordinator effective time: {context.EffectiveAtUnixMilliseconds}");
+                Console.WriteLine(
+                    $"Coordinator clock uncertainty: {context.ClockUncertaintyMilliseconds} ms");
+            },
+            cancellation.Token);
+    }
 }
 catch (OperationCanceledException)
 {
