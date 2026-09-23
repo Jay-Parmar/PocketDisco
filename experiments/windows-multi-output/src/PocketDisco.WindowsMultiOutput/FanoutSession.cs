@@ -17,6 +17,8 @@ public sealed record FanoutRunResult(
     bool WasLate)
 {
     public IReadOnlyList<string> CleanupWarnings { get; init; } = [];
+
+    public CoordinatorRunContext? CoordinatorContext { get; init; }
 }
 
 public static class FanoutSession
@@ -25,11 +27,46 @@ public static class FanoutSession
     private static readonly TimeSpan OpenTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan CompletionGrace = TimeSpan.FromSeconds(10);
 
-    public static async Task<FanoutRunResult> RunAsync(
+    public static Task<FanoutRunResult> RunAsync(
         IReadOnlyList<RenderEndpoint> endpoints,
         TimeSpan duration,
         TimeSpan startDelay,
         long? targetUnixMilliseconds,
+        CancellationToken cancellationToken) =>
+        RunCoreAsync(
+            endpoints,
+            duration,
+            startDelay,
+            targetUnixMilliseconds,
+            coordinatorStartResolver: null,
+            onCoordinatorResolved: null,
+            cancellationToken);
+
+    public static Task<FanoutRunResult> RunCoordinatorAsync(
+        IReadOnlyList<RenderEndpoint> endpoints,
+        TimeSpan duration,
+        CoordinatorStartResolver coordinatorStartResolver,
+        Action<CoordinatorRunContext>? onCoordinatorResolved,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(coordinatorStartResolver);
+        return RunCoreAsync(
+            endpoints,
+            duration,
+            startDelay: TimeSpan.Zero,
+            targetUnixMilliseconds: null,
+            coordinatorStartResolver,
+            onCoordinatorResolved,
+            cancellationToken);
+    }
+
+    private static async Task<FanoutRunResult> RunCoreAsync(
+        IReadOnlyList<RenderEndpoint> endpoints,
+        TimeSpan duration,
+        TimeSpan startDelay,
+        long? targetUnixMilliseconds,
+        CoordinatorStartResolver? coordinatorStartResolver,
+        Action<CoordinatorRunContext>? onCoordinatorResolved,
         CancellationToken cancellationToken)
     {
         if (endpoints.Count != 2)
@@ -91,25 +128,43 @@ public static class FanoutSession
                 cancellationToken);
             var readyUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-            var sampledTimestamp = Stopwatch.GetTimestamp();
-            var sampledUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            if (targetUnixMilliseconds.HasValue)
+            long target;
+            ScheduledStart plan;
+            CoordinatorRunContext? coordinatorContext = null;
+            if (coordinatorStartResolver is not null)
             {
-                ScheduledStart.ValidateTargetLead(
-                    targetUnixMilliseconds.Value,
-                    sampledUnixMilliseconds,
-                    startDelay);
+                var resolution = await CoordinatorStartWaiter.ResolveAsync(
+                    coordinatorStartResolver.ResolveAsync,
+                    startGate.Failure,
+                    cancellationToken);
+                plan = resolution.Plan;
+                coordinatorContext = resolution.Context;
+                target = coordinatorContext.EffectiveAtUnixMilliseconds;
+                plan.ValidateMediaPosition(duration);
+                onCoordinatorResolved?.Invoke(coordinatorContext);
             }
+            else
+            {
+                var sampledTimestamp = Stopwatch.GetTimestamp();
+                var sampledUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                if (targetUnixMilliseconds.HasValue)
+                {
+                    ScheduledStart.ValidateTargetLead(
+                        targetUnixMilliseconds.Value,
+                        sampledUnixMilliseconds,
+                        startDelay);
+                }
 
-            var target = targetUnixMilliseconds
-                ?? checked(sampledUnixMilliseconds + (long)startDelay.TotalMilliseconds);
-            var plan = ScheduledStart.Create(
-                target,
-                sampledUnixMilliseconds,
-                sampledTimestamp,
-                Stopwatch.GetTimestamp(),
-                Stopwatch.Frequency);
-            plan.ValidateMediaPosition(duration);
+                target = targetUnixMilliseconds
+                    ?? checked(sampledUnixMilliseconds + (long)startDelay.TotalMilliseconds);
+                plan = ScheduledStart.Create(
+                    target,
+                    sampledUnixMilliseconds,
+                    sampledTimestamp,
+                    Stopwatch.GetTimestamp(),
+                    Stopwatch.Frequency);
+                plan.ValidateMediaPosition(duration);
+            }
 
             controller.Position = plan.InitialPosition;
             var deadline = WaitUntilAsync(plan.DeadlineTimestamp, cancellationToken);
@@ -138,7 +193,10 @@ public static class FanoutSession
                 commandErrorMilliseconds,
                 completedUnixMilliseconds,
                 plan.InitialPosition,
-                plan.WasLate);
+                plan.WasLate)
+            {
+                CoordinatorContext = coordinatorContext,
+            };
         }
         finally
         {
