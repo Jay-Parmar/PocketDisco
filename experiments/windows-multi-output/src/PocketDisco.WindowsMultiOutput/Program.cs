@@ -84,6 +84,11 @@ catch (Exception exception) when (exception is not OperationCanceledException)
 Console.WriteLine($"Start target: {result.TargetUnixMilliseconds}");
 Console.WriteLine($"Start command: {result.CommandUnixMilliseconds}");
 Console.WriteLine($"Late media position: {result.InitialPosition.TotalMilliseconds:F1} ms");
+foreach (var warning in result.CleanupWarnings)
+{
+    Console.Error.WriteLine($"Cleanup warning: {warning}.");
+}
+
 if (options.TelemetryPath is not null)
 {
     try

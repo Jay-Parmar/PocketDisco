@@ -14,7 +14,10 @@ public sealed record FanoutRunResult(
     long CommandTimestamp,
     long CompletedUnixMilliseconds,
     TimeSpan InitialPosition,
-    bool WasLate);
+    bool WasLate)
+{
+    public IReadOnlyList<string> CleanupWarnings { get; init; } = [];
+}
 
 public static class FanoutSession
 {
@@ -37,11 +40,6 @@ public static class FanoutSession
         var wavPath = Path.Combine(
             Path.GetTempPath(),
             $"pocketdisco-{Guid.NewGuid():N}.wav");
-        await File.WriteAllBytesAsync(
-            wavPath,
-            ToneGenerator.CreateClickTrack(duration),
-            cancellationToken);
-
         var players = new List<MediaPlayer>(endpoints.Count);
         var sources = new List<MediaSource>(endpoints.Count);
         var readiness = new PlaybackReadiness(endpoints.Count);
@@ -50,9 +48,15 @@ public static class FanoutSession
         var controller = new MediaTimelineController();
         controller.Failed += (_, eventArgs) =>
             startGate.MarkControllerFailed(eventArgs.ExtendedError.Message);
+        FanoutRunResult? result = null;
+        IReadOnlyList<string> cleanupWarnings = [];
 
         try
         {
+            await File.WriteAllBytesAsync(
+                wavPath,
+                ToneGenerator.CreateClickTrack(duration),
+                cancellationToken);
             var file = await StorageFile.GetFileFromPathAsync(wavPath);
             for (var index = 0; index < endpoints.Count; index++)
             {
@@ -119,7 +123,7 @@ public static class FanoutSession
             await completed;
 
             var completedUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            return new FanoutRunResult(
+            result = new FanoutRunResult(
                 target,
                 readyUnixMilliseconds,
                 commandUnixMilliseconds,
@@ -130,19 +134,33 @@ public static class FanoutSession
         }
         finally
         {
-            controller.Pause();
-            foreach (var player in players)
+            var cleanup = new List<CleanupOperation>
             {
-                player.Dispose();
+                new("pause timeline", controller.Pause),
+            };
+            for (var index = 0; index < players.Count; index++)
+            {
+                var player = players[index];
+                cleanup.Add(new CleanupOperation(
+                    $"dispose player {index + 1}",
+                    player.Dispose));
             }
 
-            foreach (var source in sources)
+            for (var index = 0; index < sources.Count; index++)
             {
-                source.Dispose();
+                var source = sources[index];
+                cleanup.Add(new CleanupOperation(
+                    $"dispose source {index + 1}",
+                    source.Dispose));
             }
 
-            File.Delete(wavPath);
+            cleanup.Add(new CleanupOperation(
+                "delete temporary signal",
+                () => File.Delete(wavPath)));
+            cleanupWarnings = ResourceCleanup.AttemptAll(cleanup);
         }
+
+        return result! with { CleanupWarnings = cleanupWarnings };
     }
 
     private static async Task WaitUntilAsync(
