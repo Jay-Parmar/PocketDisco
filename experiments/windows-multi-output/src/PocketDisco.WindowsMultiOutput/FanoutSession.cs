@@ -9,8 +9,10 @@ namespace PocketDisco.WindowsMultiOutput;
 
 public sealed record FanoutRunResult(
     long TargetUnixMilliseconds,
+    long ReadyUnixMilliseconds,
     long CommandUnixMilliseconds,
     long CommandTimestamp,
+    long CompletedUnixMilliseconds,
     TimeSpan InitialPosition,
     bool WasLate);
 
@@ -79,6 +81,7 @@ public static class FanoutSession
             }
 
             await readiness.Completion.WaitAsync(OpenTimeout, cancellationToken);
+            var readyUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
             var sampledTimestamp = Stopwatch.GetTimestamp();
             var sampledUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -106,10 +109,13 @@ public static class FanoutSession
                 await completed;
             }
 
+            var completedUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             return new FanoutRunResult(
                 target,
+                readyUnixMilliseconds,
                 commandUnixMilliseconds,
                 commandTimestamp,
+                completedUnixMilliseconds,
                 plan.InitialPosition,
                 plan.WasLate);
         }
