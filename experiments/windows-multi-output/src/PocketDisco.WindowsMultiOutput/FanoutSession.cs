@@ -20,6 +20,7 @@ public static class FanoutSession
 {
     private const double SafeVolume = 0.12;
     private static readonly TimeSpan OpenTimeout = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan CompletionGrace = TimeSpan.FromSeconds(10);
 
     public static async Task<FanoutRunResult> RunAsync(
         IReadOnlyList<RenderEndpoint> endpoints,
@@ -44,6 +45,7 @@ public static class FanoutSession
         var players = new List<MediaPlayer>(endpoints.Count);
         var sources = new List<MediaSource>(endpoints.Count);
         var readiness = new PlaybackReadiness(endpoints.Count);
+        var completion = new PlaybackCompletion(endpoints.Count);
         var startGate = new PlaybackStartGate();
         var controller = new MediaTimelineController();
 
@@ -72,6 +74,7 @@ public static class FanoutSession
                     startGate.MarkFailed(playerIndex, eventArgs.ErrorMessage);
                     readiness.MarkFailed(playerIndex, eventArgs.ErrorMessage);
                 };
+                player.MediaEnded += (_, _) => completion.MarkEnded(playerIndex);
                 player.Source = source;
                 sources.Add(source);
                 players.Add(player);
@@ -100,13 +103,19 @@ public static class FanoutSession
             startGate.IssueStart(controller.Resume);
 
             var remaining = duration - plan.InitialPosition;
-            if (remaining > TimeSpan.Zero)
+            var completionTimeout = remaining > TimeSpan.Zero
+                ? remaining + CompletionGrace
+                : CompletionGrace;
+            var completed = await Task.WhenAny(
+                completion.Completion,
+                startGate.Failure,
+                Task.Delay(completionTimeout, cancellationToken));
+            if (completed != completion.Completion && completed != startGate.Failure)
             {
-                var completed = await Task.WhenAny(
-                    Task.Delay(remaining, cancellationToken),
-                    startGate.Failure);
-                await completed;
+                throw new TimeoutException("Players did not report completion before the timeout.");
             }
+
+            await completed;
 
             var completedUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             return new FanoutRunResult(
