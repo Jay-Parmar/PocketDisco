@@ -17,7 +17,7 @@ public sealed record PlaybackOptionsParseResult(PlaybackOptions? Options, string
 public static class PlaybackOptionsParser
 {
     private static readonly TimeSpan DefaultDuration = TimeSpan.FromSeconds(15);
-    private static readonly TimeSpan DefaultStartDelay = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan DefaultStartDelay = TimeSpan.FromSeconds(5);
 
     public static PlaybackOptionsParseResult Parse(IReadOnlyList<string> arguments)
     {
@@ -64,9 +64,9 @@ public static class PlaybackOptionsParser
                     duration = TimeSpan.FromSeconds(durationSeconds);
                     break;
                 case "--start-delay-ms":
-                    if (!TryParseInRange(value, 1_000, 60_000, out var delayMilliseconds))
+                    if (!TryParseInRange(value, 5_000, 60_000, out var delayMilliseconds))
                     {
-                        return Invalid("--start-delay-ms must be between 1000 and 60000.");
+                        return Invalid("--start-delay-ms must be between 5000 and 60000.");
                     }
 
                     startDelay = TimeSpan.FromMilliseconds(delayMilliseconds);

@@ -41,7 +41,7 @@ public sealed class PlaybackOptionsParserTests
             [
                 "--devices", "0,1",
                 "--start-at-unix-ms", "1780000000000",
-                "--start-delay-ms", "3000",
+                "--start-delay-ms", "5000",
             ]);
 
         Assert.IsFalse(result.IsValid);
@@ -57,6 +57,15 @@ public sealed class PlaybackOptionsParserTests
         Assert.IsFalse(result.IsValid);
         Assert.IsNotNull(result.Error);
         Assert.Contains("Unknown option", result.Error);
+    }
+
+    [TestMethod]
+    public void RejectsStartDelayBelowProtocolMinimum()
+    {
+        var result = PlaybackOptionsParser.Parse(
+            ["--devices", "0,1", "--start-delay-ms", "4999"]);
+
+        Assert.IsFalse(result.IsValid);
     }
 
     [TestMethod]
