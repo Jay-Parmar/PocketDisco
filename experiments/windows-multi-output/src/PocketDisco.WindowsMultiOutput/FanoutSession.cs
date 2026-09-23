@@ -86,7 +86,11 @@ public static class FanoutSession
                 players.Add(player);
             }
 
-            await readiness.Completion.WaitAsync(OpenTimeout, cancellationToken);
+            await PlaybackRunWaiter.WaitForReadinessAsync(
+                readiness.Completion,
+                startGate.Failure,
+                OpenTimeout,
+                cancellationToken);
             var readyUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
             var sampledTimestamp = Stopwatch.GetTimestamp();

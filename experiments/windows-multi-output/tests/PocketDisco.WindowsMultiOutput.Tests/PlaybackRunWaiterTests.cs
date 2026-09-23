@@ -41,4 +41,18 @@ public sealed class PlaybackRunWaiterTests
                 CancellationToken.None));
         Assert.AreEqual("failed", error.Message);
     }
+
+    [TestMethod]
+    public async Task ControllerFailureInterruptsReadinessWait()
+    {
+        var failure = Task.FromException(new InvalidOperationException("controller failed"));
+
+        var error = await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () =>
+            await PlaybackRunWaiter.WaitForReadinessAsync(
+                Task.Delay(Timeout.InfiniteTimeSpan),
+                failure,
+                TimeSpan.FromMinutes(1),
+                CancellationToken.None));
+        Assert.AreEqual("controller failed", error.Message);
+    }
 }

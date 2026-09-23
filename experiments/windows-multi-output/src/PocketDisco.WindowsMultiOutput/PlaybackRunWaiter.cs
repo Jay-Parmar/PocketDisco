@@ -8,12 +8,41 @@ public static class PlaybackRunWaiter
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(completion);
+        await WaitForTerminalAsync(
+            completion,
+            failure,
+            timeout,
+            "Players did not report completion before the timeout.",
+            cancellationToken);
+    }
+
+    public static async Task WaitForReadinessAsync(
+        Task readiness,
+        Task failure,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        await WaitForTerminalAsync(
+            readiness,
+            failure,
+            timeout,
+            "Players did not become ready before the timeout.",
+            cancellationToken);
+    }
+
+    private static async Task WaitForTerminalAsync(
+        Task success,
+        Task failure,
+        TimeSpan timeout,
+        string timeoutMessage,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(success);
         ArgumentNullException.ThrowIfNull(failure);
         ArgumentOutOfRangeException.ThrowIfLessThan(timeout, TimeSpan.Zero);
 
         var timeoutTask = Task.Delay(timeout, cancellationToken);
-        var finished = await Task.WhenAny(completion, failure, timeoutTask);
+        var finished = await Task.WhenAny(success, failure, timeoutTask);
         if (failure.IsCompleted)
         {
             await failure;
@@ -27,10 +56,10 @@ public static class PlaybackRunWaiter
                 await failure;
             }
 
-            throw new TimeoutException("Players did not report completion before the timeout.");
+            throw new TimeoutException(timeoutMessage);
         }
 
-        await completion;
+        await success;
         if (failure.IsCompleted)
         {
             await failure;
