@@ -5,13 +5,30 @@ namespace PocketDisco.WindowsMultiOutput;
 
 public static class ToneGenerator
 {
+    public const string SignalId = "generated-click-v1";
+    public const string PcmSha256 = "e3c4db9cce24fdeb8cfc9131f0240665c54afde2519d99a59b91db98602274f0";
     public const int SampleRate = 48_000;
 
     private const int HeaderSize = 44;
     private const int BytesPerSample = 2;
     private const int ClickSamples = SampleRate / 50;
-    private const double FrequencyHz = 1_000;
-    private const double Amplitude = short.MaxValue * 0.80;
+    private const int HalfWaveSamples = SampleRate / 2_000;
+    private const int PeakAmplitude = 8_192;
+
+    public static byte[] CreateCanonicalPcm()
+    {
+        var pcm = new byte[SampleRate * BytesPerSample];
+        for (var sampleIndex = 0; sampleIndex < ClickSamples; sampleIndex++)
+        {
+            var level = PeakAmplitude * (ClickSamples - sampleIndex) / ClickSamples;
+            var polarity = (sampleIndex / HalfWaveSamples) % 2 == 0 ? 1 : -1;
+            BinaryPrimitives.WriteInt16LittleEndian(
+                pcm.AsSpan(sampleIndex * BytesPerSample, BytesPerSample),
+                (short)(level * polarity));
+        }
+
+        return pcm;
+    }
 
     public static byte[] CreateClickTrack(TimeSpan duration)
     {
@@ -22,20 +39,13 @@ public static class ToneGenerator
         var wav = new byte[checked(HeaderSize + dataSize)];
         WriteHeader(wav, dataSize);
 
-        for (var sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++)
+        var frame = CreateCanonicalPcm();
+        var written = 0;
+        while (written < dataSize)
         {
-            var clickSample = sampleIndex % SampleRate;
-            if (clickSample >= ClickSamples)
-            {
-                continue;
-            }
-
-            var phase = 2 * Math.PI * FrequencyHz * clickSample / SampleRate;
-            var envelope = 1d - ((double)clickSample / ClickSamples);
-            var sample = (short)Math.Round(Math.Sin(phase) * Amplitude * envelope);
-            BinaryPrimitives.WriteInt16LittleEndian(
-                wav.AsSpan(HeaderSize + (sampleIndex * BytesPerSample), BytesPerSample),
-                sample);
+            var count = Math.Min(frame.Length, dataSize - written);
+            frame.AsSpan(0, count).CopyTo(wav.AsSpan(HeaderSize + written, count));
+            written += count;
         }
 
         return wav;

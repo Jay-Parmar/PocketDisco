@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace PocketDisco.WindowsMultiOutput.Tests;
@@ -33,6 +34,19 @@ public sealed class ToneGeneratorTests
     }
 
     [TestMethod]
+    public void MatchesGeneratedClickIdentityAndDigest()
+    {
+        var pcm = ToneGenerator.CreateCanonicalPcm();
+        var digest = Convert.ToHexString(SHA256.HashData(pcm)).ToLowerInvariant();
+
+        Assert.HasCount(96_000, pcm);
+        Assert.AreEqual(8_192, ReadPcmSample(pcm, 0));
+        Assert.AreEqual(-7_987, ReadPcmSample(pcm, 24));
+        Assert.AreEqual(-8, ReadPcmSample(pcm, 959));
+        Assert.AreEqual(ToneGenerator.PcmSha256, digest);
+    }
+
+    [TestMethod]
     public void RejectsNonPositiveDuration()
     {
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(
@@ -47,10 +61,12 @@ public sealed class ToneGeneratorTests
             .Select(sampleIndex => Math.Abs((int)ReadSample(wav, sampleIndex)))
             .Max();
 
-        Assert.IsGreaterThan(20_000, peak);
-        Assert.IsLessThanOrEqualTo(26_215, peak);
+        Assert.AreEqual(8_192, peak);
     }
 
     private static short ReadSample(byte[] wav, int sampleIndex) =>
         BinaryPrimitives.ReadInt16LittleEndian(wav.AsSpan(44 + (sampleIndex * 2), 2));
+
+    private static short ReadPcmSample(byte[] pcm, int sampleIndex) =>
+        BinaryPrimitives.ReadInt16LittleEndian(pcm.AsSpan(sampleIndex * 2, 2));
 }
