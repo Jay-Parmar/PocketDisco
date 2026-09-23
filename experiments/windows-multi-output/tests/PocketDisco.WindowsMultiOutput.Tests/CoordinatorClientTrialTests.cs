@@ -82,6 +82,34 @@ public sealed class CoordinatorClientTrialTests
     }
 
     [TestMethod]
+    [DataRow(1_999L)]
+    [DataRow(30_001L)]
+    public async Task RejectsTrialOutsideCreationLeadBounds(long creationLeadMilliseconds)
+    {
+        var body = ValidResponse(effectiveAt: 1_786_899_000_000 + creationLeadMilliseconds);
+        var handler = new FakeHandler((_, _) => JsonResponse(HttpStatusCode.OK, body));
+        using var client = Client(handler);
+
+        await Assert.ThrowsExactlyAsync<CoordinatorClientException>(async () =>
+            await client.FetchTrialAsync(TrialId));
+    }
+
+    [TestMethod]
+    [DataRow(2_000L)]
+    [DataRow(30_000L)]
+    public async Task AcceptsTrialAtCreationLeadBounds(long creationLeadMilliseconds)
+    {
+        var effectiveAt = 1_786_899_000_000 + creationLeadMilliseconds;
+        var body = ValidResponse(effectiveAt: effectiveAt);
+        var handler = new FakeHandler((_, _) => JsonResponse(HttpStatusCode.OK, body));
+        using var client = Client(handler);
+
+        var trial = await client.FetchTrialAsync(TrialId);
+
+        Assert.AreEqual(effectiveAt, trial.EffectiveAtUnixMilliseconds);
+    }
+
+    [TestMethod]
     public async Task RejectsAResponseForAnotherTrial()
     {
         var otherId = Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");

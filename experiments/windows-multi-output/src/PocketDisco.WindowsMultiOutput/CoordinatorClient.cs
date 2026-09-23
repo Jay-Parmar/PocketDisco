@@ -10,6 +10,8 @@ namespace PocketDisco.WindowsMultiOutput;
 public sealed class CoordinatorClient : IDisposable
 {
     private const long TrialLeadMilliseconds = 25_000;
+    private const long MinimumTrialLeadMilliseconds = 2_000;
+    private const long MaximumTrialLeadMilliseconds = 30_000;
     private const int MaximumBearerTokenLength = 128;
     private const int MaximumResponseBytes = 4_096;
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(3);
@@ -291,10 +293,15 @@ public sealed class CoordinatorClient : IDisposable
         if (assetId != ToneGenerator.SignalId
             || assetSha256 != ToneGenerator.PcmSha256
             || requestedPosition != 0
-            || effectiveAt <= createdAt
             || (expectedEffectiveAt.HasValue && effectiveAt != expectedEffectiveAt.Value))
         {
             throw new CoordinatorClientException("Coordinator trial does not match the generated signal.");
+        }
+
+        var creationLead = effectiveAt - createdAt;
+        if (creationLead is < MinimumTrialLeadMilliseconds or > MaximumTrialLeadMilliseconds)
+        {
+            throw new CoordinatorClientException("Coordinator returned invalid trial data.");
         }
 
         return new CoordinatorTrial(
