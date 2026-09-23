@@ -1,0 +1,600 @@
+{
+  "configuration": {
+    "expected_acoustic_outputs": [],
+    "expected_clients": [
+      "android-phone",
+      "android-emulator",
+      "windows-pc"
+    ],
+    "minimum_valid_starts": 10
+  },
+  "measurements": [
+    {
+      "absolute_target_error_ms": {
+        "max": 116,
+        "median": 31.5,
+        "p95": 75
+      },
+      "attempted_starts": 10,
+      "clock_source": "coordinator_estimate",
+      "failed_starts": 0,
+      "failures": [],
+      "max_clock_uncertainty_ms": 47,
+      "measurement": "command_issued",
+      "skew_ms": {
+        "max": 111,
+        "median": 33.5,
+        "p95": 111
+      },
+      "starts": [
+        {
+          "clock_id": "coordinator:04d62eec-6f36-47d3-bcbc-1b11531723de",
+          "identities": [
+            "android-emulator",
+            "android-phone",
+            "windows-pc"
+          ],
+          "max_clock_uncertainty_ms": 43,
+          "skew_ms": 39,
+          "start_id": "1790191546629",
+          "target_error_ms": [
+            {
+              "device_id": "android-emulator",
+              "value": 25
+            },
+            {
+              "device_id": "android-phone",
+              "value": 44
+            },
+            {
+              "device_id": "windows-pc",
+              "value": 5
+            }
+          ],
+          "trial_id": "04d62eec-6f36-47d3-bcbc-1b11531723de"
+        },
+        {
+          "clock_id": "coordinator:37065c99-307f-4224-9b33-b16e02d5802a",
+          "identities": [
+            "android-emulator",
+            "android-phone",
+            "windows-pc"
+          ],
+          "max_clock_uncertainty_ms": 20,
+          "skew_ms": 36,
+          "start_id": "1790190407160",
+          "target_error_ms": [
+            {
+              "device_id": "android-emulator",
+              "value": 26
+            },
+            {
+              "device_id": "android-phone",
+              "value": 46
+            },
+            {
+              "device_id": "windows-pc",
+              "value": 10
+            }
+          ],
+          "trial_id": "37065c99-307f-4224-9b33-b16e02d5802a"
+        },
+        {
+          "clock_id": "coordinator:3ebd1af7-586e-4281-bade-23c2f2af600e",
+          "identities": [
+            "android-emulator",
+            "android-phone",
+            "windows-pc"
+          ],
+          "max_clock_uncertainty_ms": 29,
+          "skew_ms": 27,
+          "start_id": "1790191049669",
+          "target_error_ms": [
+            {
+              "device_id": "android-emulator",
+              "value": 34
+            },
+            {
+              "device_id": "android-phone",
+              "value": 30
+            },
+            {
+              "device_id": "windows-pc",
+              "value": 7
+            }
+          ],
+          "trial_id": "3ebd1af7-586e-4281-bade-23c2f2af600e"
+        },
+        {
+          "clock_id": "coordinator:4c5603c7-fb07-43c4-9d84-ccffa4dee7e1",
+          "identities": [
+            "android-emulator",
+            "android-phone",
+            "windows-pc"
+          ],
+          "max_clock_uncertainty_ms": 21,
+          "skew_ms": 27,
+          "start_id": "1790190839679",
+          "target_error_ms": [
+            {
+              "device_id": "android-emulator",
+              "value": 35
+            },
+            {
+              "device_id": "android-phone",
+              "value": 34
+            },
+            {
+              "device_id": "windows-pc",
+              "value": 8
+            }
+          ],
+          "trial_id": "4c5603c7-fb07-43c4-9d84-ccffa4dee7e1"
+        },
+        {
+          "clock_id": "coordinator:6e469385-0e40-4199-a3c6-f3b6f921e1b3",
+          "identities": [
+            "android-emulator",
+            "android-phone",
+            "windows-pc"
+          ],
+          "max_clock_uncertainty_ms": 35,
+          "skew_ms": 41,
+          "start_id": "1790191420967",
+          "target_error_ms": [
+            {
+              "device_id": "android-emulator",
+              "value": 41
+            },
+            {
+              "device_id": "android-phone",
+              "value": 36
+            },
+            {
+              "device_id": "windows-pc",
+              "value": 0
+            }
+          ],
+          "trial_id": "6e469385-0e40-4199-a3c6-f3b6f921e1b3"
+        },
+        {
+          "clock_id": "coordinator:731f793e-41da-44b8-b0d4-02848cecaf27",
+          "identities": [
+            "android-emulator",
+            "android-phone",
+            "windows-pc"
+          ],
+          "max_clock_uncertainty_ms": 35,
+          "skew_ms": 23,
+          "start_id": "1790191173505",
+          "target_error_ms": [
+            {
+              "device_id": "android-emulator",
+              "value": 31
+            },
+            {
+              "device_id": "android-phone",
+              "value": 32
+            },
+            {
+              "device_id": "windows-pc",
+              "value": 9
+            }
+          ],
+          "trial_id": "731f793e-41da-44b8-b0d4-02848cecaf27"
+        },
+        {
+          "clock_id": "coordinator:79a01d6f-c62a-4704-85a9-60bb8f21b14c",
+          "identities": [
+            "android-emulator",
+            "android-phone",
+            "windows-pc"
+          ],
+          "max_clock_uncertainty_ms": 20,
+          "skew_ms": 29,
+          "start_id": "1790190714045",
+          "target_error_ms": [
+            {
+              "device_id": "android-emulator",
+              "value": 39
+            },
+            {
+              "device_id": "android-phone",
+              "value": 34
+            },
+            {
+              "device_id": "windows-pc",
+              "value": 10
+            }
+          ],
+          "trial_id": "79a01d6f-c62a-4704-85a9-60bb8f21b14c"
+        },
+        {
+          "clock_id": "coordinator:8d2c02c6-2c4f-4603-a634-3ea538289d70",
+          "identities": [
+            "android-emulator",
+            "android-phone",
+            "windows-pc"
+          ],
+          "max_clock_uncertainty_ms": 12,
+          "skew_ms": 31,
+          "start_id": "1790190592363",
+          "target_error_ms": [
+            {
+              "device_id": "android-emulator",
+              "value": 26
+            },
+            {
+              "device_id": "android-phone",
+              "value": 38
+            },
+            {
+              "device_id": "windows-pc",
+              "value": 7
+            }
+          ],
+          "trial_id": "8d2c02c6-2c4f-4603-a634-3ea538289d70"
+        },
+        {
+          "clock_id": "coordinator:c34ae193-5e4a-4c3b-91ea-9e6fe9c9d1a1",
+          "identities": [
+            "android-emulator",
+            "android-phone",
+            "windows-pc"
+          ],
+          "max_clock_uncertainty_ms": 40,
+          "skew_ms": 111,
+          "start_id": "1790190006131",
+          "target_error_ms": [
+            {
+              "device_id": "android-emulator",
+              "value": 75
+            },
+            {
+              "device_id": "android-phone",
+              "value": 116
+            },
+            {
+              "device_id": "windows-pc",
+              "value": 5
+            }
+          ],
+          "trial_id": "c34ae193-5e4a-4c3b-91ea-9e6fe9c9d1a1"
+        },
+        {
+          "clock_id": "coordinator:ec2e2e7a-3a7d-4569-9ac7-e4249217fb1c",
+          "identities": [
+            "android-emulator",
+            "android-phone",
+            "windows-pc"
+          ],
+          "max_clock_uncertainty_ms": 47,
+          "skew_ms": 40,
+          "start_id": "1790191298017",
+          "target_error_ms": [
+            {
+              "device_id": "android-emulator",
+              "value": 39
+            },
+            {
+              "device_id": "android-phone",
+              "value": 44
+            },
+            {
+              "device_id": "windows-pc",
+              "value": 4
+            }
+          ],
+          "trial_id": "ec2e2e7a-3a7d-4569-9ac7-e4249217fb1c"
+        }
+      ],
+      "valid_starts": 10
+    },
+    {
+      "absolute_target_error_ms": {
+        "max": 627,
+        "median": 50.5,
+        "p95": 559
+      },
+      "attempted_starts": 10,
+      "clock_source": "coordinator_estimate",
+      "failed_starts": 0,
+      "failures": [],
+      "max_clock_uncertainty_ms": 47,
+      "measurement": "playback_observed",
+      "skew_ms": {
+        "max": 586,
+        "median": 511.5,
+        "p95": 586
+      },
+      "starts": [
+        {
+          "clock_id": "coordinator:04d62eec-6f36-47d3-bcbc-1b11531723de",
+          "identities": [
+            "android-emulator",
+            "android-phone",
+            "windows-pc"
+          ],
+          "max_clock_uncertainty_ms": 43,
+          "skew_ms": 525,
+          "start_id": "1790191546629",
+          "target_error_ms": [
+            {
+              "device_id": "android-emulator",
+              "value": 30
+            },
+            {
+              "device_id": "android-phone",
+              "value": 555
+            },
+            {
+              "device_id": "windows-pc",
+              "value": 34
+            }
+          ],
+          "trial_id": "04d62eec-6f36-47d3-bcbc-1b11531723de"
+        },
+        {
+          "clock_id": "coordinator:37065c99-307f-4224-9b33-b16e02d5802a",
+          "identities": [
+            "android-emulator",
+            "android-phone",
+            "windows-pc"
+          ],
+          "max_clock_uncertainty_ms": 20,
+          "skew_ms": 520,
+          "start_id": "1790190407160",
+          "target_error_ms": [
+            {
+              "device_id": "android-emulator",
+              "value": 47
+            },
+            {
+              "device_id": "android-phone",
+              "value": 559
+            },
+            {
+              "device_id": "windows-pc",
+              "value": 39
+            }
+          ],
+          "trial_id": "37065c99-307f-4224-9b33-b16e02d5802a"
+        },
+        {
+          "clock_id": "coordinator:3ebd1af7-586e-4281-bade-23c2f2af600e",
+          "identities": [
+            "android-emulator",
+            "android-phone",
+            "windows-pc"
+          ],
+          "max_clock_uncertainty_ms": 29,
+          "skew_ms": 503,
+          "start_id": "1790191049669",
+          "target_error_ms": [
+            {
+              "device_id": "android-emulator",
+              "value": 60
+            },
+            {
+              "device_id": "android-phone",
+              "value": 538
+            },
+            {
+              "device_id": "windows-pc",
+              "value": 35
+            }
+          ],
+          "trial_id": "3ebd1af7-586e-4281-bade-23c2f2af600e"
+        },
+        {
+          "clock_id": "coordinator:4c5603c7-fb07-43c4-9d84-ccffa4dee7e1",
+          "identities": [
+            "android-emulator",
+            "android-phone",
+            "windows-pc"
+          ],
+          "max_clock_uncertainty_ms": 21,
+          "skew_ms": 504,
+          "start_id": "1790190839679",
+          "target_error_ms": [
+            {
+              "device_id": "android-emulator",
+              "value": 40
+            },
+            {
+              "device_id": "android-phone",
+              "value": 544
+            },
+            {
+              "device_id": "windows-pc",
+              "value": 43
+            }
+          ],
+          "trial_id": "4c5603c7-fb07-43c4-9d84-ccffa4dee7e1"
+        },
+        {
+          "clock_id": "coordinator:6e469385-0e40-4199-a3c6-f3b6f921e1b3",
+          "identities": [
+            "android-emulator",
+            "android-phone",
+            "windows-pc"
+          ],
+          "max_clock_uncertainty_ms": 35,
+          "skew_ms": 519,
+          "start_id": "1790191420967",
+          "target_error_ms": [
+            {
+              "device_id": "android-emulator",
+              "value": 49
+            },
+            {
+              "device_id": "android-phone",
+              "value": 542
+            },
+            {
+              "device_id": "windows-pc",
+              "value": 23
+            }
+          ],
+          "trial_id": "6e469385-0e40-4199-a3c6-f3b6f921e1b3"
+        },
+        {
+          "clock_id": "coordinator:731f793e-41da-44b8-b0d4-02848cecaf27",
+          "identities": [
+            "android-emulator",
+            "android-phone",
+            "windows-pc"
+          ],
+          "max_clock_uncertainty_ms": 35,
+          "skew_ms": 501,
+          "start_id": "1790191173505",
+          "target_error_ms": [
+            {
+              "device_id": "android-emulator",
+              "value": 60
+            },
+            {
+              "device_id": "android-phone",
+              "value": 541
+            },
+            {
+              "device_id": "windows-pc",
+              "value": 40
+            }
+          ],
+          "trial_id": "731f793e-41da-44b8-b0d4-02848cecaf27"
+        },
+        {
+          "clock_id": "coordinator:79a01d6f-c62a-4704-85a9-60bb8f21b14c",
+          "identities": [
+            "android-emulator",
+            "android-phone",
+            "windows-pc"
+          ],
+          "max_clock_uncertainty_ms": 20,
+          "skew_ms": 498,
+          "start_id": "1790190714045",
+          "target_error_ms": [
+            {
+              "device_id": "android-emulator",
+              "value": 44
+            },
+            {
+              "device_id": "android-phone",
+              "value": 542
+            },
+            {
+              "device_id": "windows-pc",
+              "value": 47
+            }
+          ],
+          "trial_id": "79a01d6f-c62a-4704-85a9-60bb8f21b14c"
+        },
+        {
+          "clock_id": "coordinator:8d2c02c6-2c4f-4603-a634-3ea538289d70",
+          "identities": [
+            "android-emulator",
+            "android-phone",
+            "windows-pc"
+          ],
+          "max_clock_uncertainty_ms": 12,
+          "skew_ms": 521,
+          "start_id": "1790190592363",
+          "target_error_ms": [
+            {
+              "device_id": "android-emulator",
+              "value": 52
+            },
+            {
+              "device_id": "android-phone",
+              "value": 552
+            },
+            {
+              "device_id": "windows-pc",
+              "value": 31
+            }
+          ],
+          "trial_id": "8d2c02c6-2c4f-4603-a634-3ea538289d70"
+        },
+        {
+          "clock_id": "coordinator:c34ae193-5e4a-4c3b-91ea-9e6fe9c9d1a1",
+          "identities": [
+            "android-emulator",
+            "android-phone",
+            "windows-pc"
+          ],
+          "max_clock_uncertainty_ms": 40,
+          "skew_ms": 586,
+          "start_id": "1790190006131",
+          "target_error_ms": [
+            {
+              "device_id": "android-emulator",
+              "value": 90
+            },
+            {
+              "device_id": "android-phone",
+              "value": 627
+            },
+            {
+              "device_id": "windows-pc",
+              "value": 41
+            }
+          ],
+          "trial_id": "c34ae193-5e4a-4c3b-91ea-9e6fe9c9d1a1"
+        },
+        {
+          "clock_id": "coordinator:ec2e2e7a-3a7d-4569-9ac7-e4249217fb1c",
+          "identities": [
+            "android-emulator",
+            "android-phone",
+            "windows-pc"
+          ],
+          "max_clock_uncertainty_ms": 47,
+          "skew_ms": 504,
+          "start_id": "1790191298017",
+          "target_error_ms": [
+            {
+              "device_id": "android-emulator",
+              "value": 70
+            },
+            {
+              "device_id": "android-phone",
+              "value": 551
+            },
+            {
+              "device_id": "windows-pc",
+              "value": 47
+            }
+          ],
+          "trial_id": "ec2e2e7a-3a7d-4569-9ac7-e4249217fb1c"
+        }
+      ],
+      "valid_starts": 10
+    },
+    {
+      "absolute_target_error_ms": null,
+      "attempted_starts": 0,
+      "clock_source": "external_capture",
+      "failed_starts": 0,
+      "failures": [],
+      "max_clock_uncertainty_ms": null,
+      "measurement": "acoustic_onset",
+      "skew_ms": {
+        "max": null,
+        "median": null,
+        "p95": null
+      },
+      "starts": [],
+      "valid_starts": 0
+    }
+  ],
+  "scenario_id": "mixed-20260924-01",
+  "schema_version": 2,
+  "summary": {
+    "acoustic_status": "not_measured",
+    "attempted_starts": 10,
+    "command_player_complete": true,
+    "minimum_starts_met": true,
+    "records": 60
+  }
+}
