@@ -48,6 +48,7 @@ and Windows must pass the same golden digest test before a device run.
 5. Preselect safe output volume and the intended routes.
 6. Prepare every player before creating or fetching the time-limited trial.
 7. Record sanitized client labels and run-local output labels only.
+8. Open an operator attempt ledger before the first trial is created.
 
 ## Trial procedure
 
@@ -66,8 +67,15 @@ and Windows must pass the same golden digest test before a device run.
 9. If isolated microphone channels are available, record `acoustic_onset`
    separately for each captured output.
 10. Preserve every attempt, including validation, route, timeout, and playback
-   failures.
+    failures.
 11. Repeat at least ten valid starts before reporting timing percentiles.
+
+Timing telemetry v2 starts only after a client has resolved and validated a
+trial. It does not replace the operator attempt ledger for earlier preparation,
+readiness, clock, create, fetch, or validation failures. Record those with an
+attempt number, stage, stable failure reason, outcome, and optional trial UUID.
+Do not record coordinator URLs, credentials, endpoint IDs, response bodies, or
+raw exception messages.
 
 ## Analysis
 
