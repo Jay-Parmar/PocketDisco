@@ -86,6 +86,16 @@ public sealed class CoordinatorClient : IDisposable
         }
     }
 
+    public Task<CoordinatorTrial> FetchTrialAsync(
+        Guid trialId,
+        CancellationToken cancellationToken = default) =>
+        SendJsonAsync(
+            HttpMethod.Get,
+            $"v1/trials/{trialId:D}",
+            content: null,
+            root => ParseTrialResponse(root, trialId),
+            cancellationToken);
+
     public void Dispose()
     {
         httpClient.Dispose();
@@ -194,6 +204,47 @@ public sealed class CoordinatorClient : IDisposable
         return new CoordinatorTimeResponse(serverReceive, serverSend);
     }
 
+    private static CoordinatorTrial ParseTrialResponse(JsonElement root, Guid expectedTrialId)
+    {
+        RequireExactProperties(root, "trial");
+        var trial = root.GetProperty("trial");
+        RequireExactProperties(
+            trial,
+            "id",
+            "asset_id",
+            "asset_sha256",
+            "requested_position_ms",
+            "effective_at_unix_ms",
+            "created_at_unix_ms");
+
+        var idValue = ReadString(trial, "id");
+        if (!Guid.TryParseExact(idValue, "D", out var id) || id != expectedTrialId)
+        {
+            throw new CoordinatorClientException("Coordinator returned invalid trial data.");
+        }
+
+        var assetId = ReadString(trial, "asset_id");
+        var assetSha256 = ReadString(trial, "asset_sha256");
+        var requestedPosition = ReadNonNegativeInt64(trial, "requested_position_ms");
+        var effectiveAt = ReadNonNegativeInt64(trial, "effective_at_unix_ms");
+        var createdAt = ReadNonNegativeInt64(trial, "created_at_unix_ms");
+        if (assetId != ToneGenerator.SignalId
+            || assetSha256 != ToneGenerator.PcmSha256
+            || requestedPosition != 0
+            || effectiveAt <= createdAt)
+        {
+            throw new CoordinatorClientException("Coordinator trial does not match the generated signal.");
+        }
+
+        return new CoordinatorTrial(
+            id,
+            assetId,
+            assetSha256,
+            requestedPosition,
+            effectiveAt,
+            createdAt);
+    }
+
     private static void RequireExactProperties(JsonElement root, params string[] expected)
     {
         if (root.ValueKind != JsonValueKind.Object)
@@ -223,9 +274,29 @@ public sealed class CoordinatorClient : IDisposable
         return value;
     }
 
+    private static string ReadString(JsonElement root, string propertyName)
+    {
+        var property = root.GetProperty(propertyName);
+        if (property.ValueKind != JsonValueKind.String
+            || string.IsNullOrEmpty(property.GetString()))
+        {
+            throw new CoordinatorClientException("Coordinator returned invalid JSON.");
+        }
+
+        return property.GetString()!;
+    }
+
     private sealed record CoordinatorTimeResponse(
         long ServerReceiveUnixMilliseconds,
         long ServerSendUnixMilliseconds);
 }
+
+public sealed record CoordinatorTrial(
+    Guid Id,
+    string AssetId,
+    string AssetSha256,
+    long RequestedPositionMilliseconds,
+    long EffectiveAtUnixMilliseconds,
+    long CreatedAtUnixMilliseconds);
 
 public sealed class CoordinatorClientException(string message) : Exception(message);
