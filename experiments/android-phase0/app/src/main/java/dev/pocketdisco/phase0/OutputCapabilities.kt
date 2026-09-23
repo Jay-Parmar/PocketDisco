@@ -88,6 +88,8 @@ enum class FeatureSupport {
     SUPPORTED,
     NOT_SUPPORTED,
     NOT_CONFIGURED,
+    BLUETOOTH_DISABLED,
+    PLATFORM_ERROR,
     PERMISSION_REQUIRED,
     UNKNOWN,
     ;
@@ -97,8 +99,22 @@ enum class FeatureSupport {
             BluetoothStatusCodes.FEATURE_SUPPORTED -> SUPPORTED
             BluetoothStatusCodes.FEATURE_NOT_SUPPORTED -> NOT_SUPPORTED
             BluetoothStatusCodes.FEATURE_NOT_CONFIGURED -> NOT_CONFIGURED
+            BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ENABLED -> BLUETOOTH_DISABLED
+            BluetoothStatusCodes.ERROR_UNKNOWN -> PLATFORM_ERROR
             else -> UNKNOWN
         }
+    }
+}
+
+data class FeatureCapability(
+    val support: FeatureSupport,
+    val platformResult: Int? = null,
+) {
+    companion object {
+        fun fromPlatformResult(result: Int): FeatureCapability = FeatureCapability(
+            support = FeatureSupport.fromPlatformResult(result),
+            platformResult = result,
+        )
     }
 }
 
@@ -112,8 +128,8 @@ data class OutputDeviceDescriptor(
 
 data class OutputCapabilitySnapshot(
     val sdkInt: Int,
-    val leAudio: FeatureSupport,
-    val leAudioBroadcastSource: FeatureSupport,
+    val leAudio: FeatureCapability,
+    val leAudioBroadcastSource: FeatureCapability,
     val outputs: List<OutputDeviceDescriptor>,
 )
 
@@ -143,25 +159,29 @@ class AndroidOutputCapabilityProbe(private val context: Context) {
         )
     }
 
-    private fun leAudioSupport(): FeatureSupport {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return FeatureSupport.NOT_SUPPORTED
+    private fun leAudioSupport(): FeatureCapability {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return FeatureCapability(FeatureSupport.NOT_SUPPORTED)
+        }
         val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
-            ?: return FeatureSupport.NOT_SUPPORTED
+            ?: return FeatureCapability(FeatureSupport.NOT_SUPPORTED)
         return try {
-            FeatureSupport.fromPlatformResult(adapter.isLeAudioSupported)
+            FeatureCapability.fromPlatformResult(adapter.isLeAudioSupported)
         } catch (_: SecurityException) {
-            FeatureSupport.PERMISSION_REQUIRED
+            FeatureCapability(FeatureSupport.PERMISSION_REQUIRED)
         }
     }
 
-    private fun leAudioBroadcastSourceSupport(): FeatureSupport {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return FeatureSupport.NOT_SUPPORTED
+    private fun leAudioBroadcastSourceSupport(): FeatureCapability {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return FeatureCapability(FeatureSupport.NOT_SUPPORTED)
+        }
         val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
-            ?: return FeatureSupport.NOT_SUPPORTED
+            ?: return FeatureCapability(FeatureSupport.NOT_SUPPORTED)
         return try {
-            FeatureSupport.fromPlatformResult(adapter.isLeAudioBroadcastSourceSupported)
+            FeatureCapability.fromPlatformResult(adapter.isLeAudioBroadcastSourceSupported)
         } catch (_: SecurityException) {
-            FeatureSupport.PERMISSION_REQUIRED
+            FeatureCapability(FeatureSupport.PERMISSION_REQUIRED)
         }
     }
 }

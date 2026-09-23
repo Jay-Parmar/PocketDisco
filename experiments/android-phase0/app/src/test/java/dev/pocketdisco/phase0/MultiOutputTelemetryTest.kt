@@ -1,5 +1,6 @@
 package dev.pocketdisco.phase0
 
+import android.bluetooth.BluetoothStatusCodes
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -9,8 +10,14 @@ class MultiOutputTelemetryTest {
     fun capabilityDetailExcludesDeviceNames() {
         val snapshot = OutputCapabilitySnapshot(
             sdkInt = 36,
-            leAudio = FeatureSupport.SUPPORTED,
-            leAudioBroadcastSource = FeatureSupport.NOT_SUPPORTED,
+            leAudio = FeatureCapability(
+                FeatureSupport.SUPPORTED,
+                BluetoothStatusCodes.FEATURE_SUPPORTED,
+            ),
+            leAudioBroadcastSource = FeatureCapability(
+                FeatureSupport.BLUETOOTH_DISABLED,
+                BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ENABLED,
+            ),
             outputs = listOf(
                 OutputDeviceDescriptor(
                     id = 7,
@@ -26,6 +33,9 @@ class MultiOutputTelemetryTest {
 
         assertTrue(detail.contains("id=7"))
         assertTrue(detail.contains("transport=bluetooth"))
+        assertTrue(detail.contains("le_audio_platform_result=10"))
+        assertTrue(detail.contains("le_broadcast_source=bluetooth_disabled"))
+        assertTrue(detail.contains("le_broadcast_platform_result=1"))
         assertFalse(detail.contains("Private headphones"))
     }
 

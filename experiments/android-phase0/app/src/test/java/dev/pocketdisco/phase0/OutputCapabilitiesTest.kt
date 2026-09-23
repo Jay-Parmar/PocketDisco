@@ -64,7 +64,25 @@ class OutputCapabilitiesTest {
             FeatureSupport.NOT_CONFIGURED,
             FeatureSupport.fromPlatformResult(BluetoothStatusCodes.FEATURE_NOT_CONFIGURED),
         )
+        assertEquals(
+            FeatureSupport.BLUETOOTH_DISABLED,
+            FeatureSupport.fromPlatformResult(BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ENABLED),
+        )
+        assertEquals(
+            FeatureSupport.PLATFORM_ERROR,
+            FeatureSupport.fromPlatformResult(BluetoothStatusCodes.ERROR_UNKNOWN),
+        )
         assertEquals(FeatureSupport.UNKNOWN, FeatureSupport.fromPlatformResult(null))
         assertEquals(FeatureSupport.UNKNOWN, FeatureSupport.fromPlatformResult(99))
+    }
+
+    @Test
+    fun preservesRawBluetoothFeatureResult() {
+        val capability = FeatureCapability.fromPlatformResult(
+            BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ENABLED,
+        )
+
+        assertEquals(FeatureSupport.BLUETOOTH_DISABLED, capability.support)
+        assertEquals(BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ENABLED, capability.platformResult)
     }
 }

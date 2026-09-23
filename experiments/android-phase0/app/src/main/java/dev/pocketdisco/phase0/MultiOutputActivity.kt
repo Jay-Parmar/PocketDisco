@@ -155,8 +155,8 @@ class MultiOutputActivity : Activity() {
         runDualButton.isEnabled = directTargets.size >= 2
         capabilityStatus.text = buildString {
             append("Android ${snapshot.sdkInt}\n")
-            append("LE Audio: ${snapshot.leAudio.name.lowercase()}\n")
-            append("LE broadcast source: ${snapshot.leAudioBroadcastSource.name.lowercase()}\n")
+            append("LE Audio: ${snapshot.leAudio.support.name.lowercase()}\n")
+            append("LE broadcast source: ${snapshot.leAudioBroadcastSource.support.name.lowercase()}\n")
             append("Outputs: ${snapshot.outputs.size}, direct targets: ${directTargets.size}")
         }
         record("capabilities_refreshed", MultiOutputTelemetry.capabilityDetail(snapshot))
