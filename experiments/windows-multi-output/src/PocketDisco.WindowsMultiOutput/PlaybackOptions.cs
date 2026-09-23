@@ -7,7 +7,13 @@ public sealed record PlaybackOptions(
     TimeSpan Duration,
     TimeSpan StartDelay,
     long? TargetUnixMilliseconds,
+    CoordinatorPlaybackOptions? Coordinator,
     string? TelemetryPath);
+
+public sealed record CoordinatorPlaybackOptions(string BaseUrl, Guid? TrialId)
+{
+    public bool CreateTrial => !TrialId.HasValue;
+}
 
 public sealed record PlaybackOptionsParseResult(PlaybackOptions? Options, string? Error)
 {
@@ -25,8 +31,12 @@ public static class PlaybackOptionsParser
         var duration = DefaultDuration;
         var startDelay = DefaultStartDelay;
         long? targetUnixMilliseconds = null;
+        string? coordinatorUrl = null;
+        Guid? coordinatorTrialId = null;
         string? telemetryPath = null;
         var hasStartDelay = false;
+        var hasCoordinatorUrl = false;
+        var hasCoordinatorTrial = false;
 
         for (var index = 0; index < arguments.Count; index += 2)
         {
@@ -35,6 +45,8 @@ public static class PlaybackOptionsParser
                 and not "--duration-seconds"
                 and not "--start-delay-ms"
                 and not "--start-at-unix-ms"
+                and not "--coordinator-url"
+                and not "--coordinator-trial"
                 and not "--telemetry-file")
             {
                 return Invalid($"Unknown option: {option}.");
@@ -81,6 +93,34 @@ public static class PlaybackOptionsParser
 
                     targetUnixMilliseconds = target;
                     break;
+                case "--coordinator-url":
+                    try
+                    {
+                        coordinatorUrl = CoordinatorUrl.Normalize(value);
+                        hasCoordinatorUrl = true;
+                    }
+                    catch (ArgumentException error)
+                    {
+                        return Invalid(error.Message);
+                    }
+
+                    break;
+                case "--coordinator-trial":
+                    hasCoordinatorTrial = true;
+                    if (value == "create")
+                    {
+                        coordinatorTrialId = null;
+                    }
+                    else if (!Guid.TryParseExact(value, "D", out var parsedTrialId))
+                    {
+                        return Invalid("--coordinator-trial must be create or a UUID.");
+                    }
+                    else
+                    {
+                        coordinatorTrialId = parsedTrialId;
+                    }
+
+                    break;
                 case "--telemetry-file":
                     if (string.IsNullOrWhiteSpace(value))
                     {
@@ -102,12 +142,31 @@ public static class PlaybackOptionsParser
             return Invalid("Choose either --start-at-unix-ms or --start-delay-ms.");
         }
 
+        if (hasCoordinatorUrl != hasCoordinatorTrial)
+        {
+            return Invalid("--coordinator-url and --coordinator-trial must be used together.");
+        }
+
+        CoordinatorPlaybackOptions? coordinator = null;
+        if (hasCoordinatorUrl)
+        {
+            if (targetUnixMilliseconds.HasValue || hasStartDelay)
+            {
+                return Invalid("Coordinator mode cannot use local start timing options.");
+            }
+
+            coordinator = new CoordinatorPlaybackOptions(
+                coordinatorUrl!,
+                coordinatorTrialId);
+        }
+
         return new PlaybackOptionsParseResult(
             new PlaybackOptions(
                 deviceIndexes,
                 duration,
                 startDelay,
                 targetUnixMilliseconds,
+                coordinator,
                 telemetryPath),
             null);
     }
