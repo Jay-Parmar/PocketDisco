@@ -53,17 +53,21 @@ and Windows must pass the same golden digest test before a device run.
 
 1. Take seven coordinator time samples on each client.
 2. Confirm the generated signal identity and digest on each client.
-3. Create one trial with 25 seconds of lead after all clients report ready.
-4. Fetch and validate that trial immediately on the other clients.
-5. Reject the attempt if any client has less than its minimum monotonic lead.
-6. Record one `command_issued` observation per client.
-7. Record one `playback_observed` observation per client only when the platform
+3. On both Android clients, tap `Prepare selected coordinator output` and
+   confirm that each reports ready on the intended route.
+4. Create one trial with 25 seconds of lead after all clients report ready.
+5. Fetch and validate that trial immediately on the other clients. Android
+   reuses its prepared output only while the selected route is unchanged and
+   the player remains prepared.
+6. Reject the attempt if any client has less than its minimum monotonic lead.
+7. Record one `command_issued` observation per client.
+8. Record one `playback_observed` observation per client only when the platform
    reports the player active. Do not infer this event from the command.
-8. If isolated microphone channels are available, record `acoustic_onset`
+9. If isolated microphone channels are available, record `acoustic_onset`
    separately for each captured output.
-9. Preserve every attempt, including validation, route, timeout, and playback
+10. Preserve every attempt, including validation, route, timeout, and playback
    failures.
-10. Repeat at least ten valid starts before reporting timing percentiles.
+11. Repeat at least ten valid starts before reporting timing percentiles.
 
 ## Analysis
 

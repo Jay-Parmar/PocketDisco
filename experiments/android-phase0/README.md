@@ -88,6 +88,13 @@ YouTube output is experimental and best effort. Different ads, availability, buf
    request is not sufficient.
 8. Export raw telemetry, then measure both outputs with isolated microphones.
 
+For a mixed-platform generated-signal trial, take seven coordinator time
+samples, select the coordinator route, then tap `Prepare selected coordinator
+output` on each Android client. Start the Windows coordinator trial only after
+both clients report ready. Enter the returned UUID and fetch the trial on each
+Android client. Fetch reuses the prepared track when the route is unchanged;
+otherwise it prepares a new track before scheduling.
+
 The probe generates its own PCM click. It cannot duplicate YouTube audio. The
 emulator can exercise screen and failure behavior but cannot prove Bluetooth
 routing or acoustic synchronization.
