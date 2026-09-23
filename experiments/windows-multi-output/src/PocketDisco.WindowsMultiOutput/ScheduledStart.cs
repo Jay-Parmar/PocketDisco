@@ -5,6 +5,20 @@ public sealed record ScheduledStart(
     TimeSpan InitialPosition,
     bool WasLate)
 {
+    public static void ValidateTargetLead(
+        long targetUnixMilliseconds,
+        long sampledUnixMilliseconds,
+        TimeSpan minimumLead)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(minimumLead, TimeSpan.Zero);
+        var availableLead = checked(targetUnixMilliseconds - sampledUnixMilliseconds);
+        var requiredLead = checked((long)Math.Ceiling(minimumLead.TotalMilliseconds));
+        if (availableLead < requiredLead)
+        {
+            throw new InvalidOperationException("The absolute start target has insufficient lead time.");
+        }
+    }
+
     public void ValidateMediaPosition(TimeSpan mediaDuration)
     {
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(mediaDuration, TimeSpan.Zero);

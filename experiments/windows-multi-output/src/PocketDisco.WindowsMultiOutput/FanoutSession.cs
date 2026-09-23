@@ -91,6 +91,14 @@ public static class FanoutSession
 
             var sampledTimestamp = Stopwatch.GetTimestamp();
             var sampledUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            if (targetUnixMilliseconds.HasValue)
+            {
+                ScheduledStart.ValidateTargetLead(
+                    targetUnixMilliseconds.Value,
+                    sampledUnixMilliseconds,
+                    startDelay);
+            }
+
             var target = targetUnixMilliseconds
                 ?? checked(sampledUnixMilliseconds + (long)startDelay.TotalMilliseconds);
             var plan = ScheduledStart.Create(

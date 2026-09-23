@@ -70,4 +70,23 @@ public sealed class ScheduledStartTests
 
         Assert.AreEqual(8, error);
     }
+
+    [TestMethod]
+    public void RejectsAbsoluteTargetBelowMinimumLead()
+    {
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
+            ScheduledStart.ValidateTargetLead(
+                targetUnixMilliseconds: 104_999,
+                sampledUnixMilliseconds: 100_000,
+                minimumLead: TimeSpan.FromSeconds(5)));
+    }
+
+    [TestMethod]
+    public void AcceptsAbsoluteTargetAtMinimumLead()
+    {
+        ScheduledStart.ValidateTargetLead(
+            targetUnixMilliseconds: 105_000,
+            sampledUnixMilliseconds: 100_000,
+            minimumLead: TimeSpan.FromSeconds(5));
+    }
 }
