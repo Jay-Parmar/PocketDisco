@@ -11,7 +11,7 @@ public static class ToneGenerator
     private const int BytesPerSample = 2;
     private const int ClickSamples = SampleRate / 50;
     private const double FrequencyHz = 1_000;
-    private const double Amplitude = short.MaxValue * 0.12;
+    private const double Amplitude = short.MaxValue * 0.80;
 
     public static byte[] CreateClickTrack(TimeSpan duration)
     {

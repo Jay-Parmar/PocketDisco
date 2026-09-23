@@ -39,6 +39,18 @@ public sealed class ToneGeneratorTests
             () => ToneGenerator.CreateClickTrack(TimeSpan.Zero));
     }
 
+    [TestMethod]
+    public void GeneratesAUsableClickBeforePlayerAttenuation()
+    {
+        var wav = ToneGenerator.CreateClickTrack(TimeSpan.FromSeconds(1));
+        var peak = Enumerable.Range(0, 960)
+            .Select(sampleIndex => Math.Abs((int)ReadSample(wav, sampleIndex)))
+            .Max();
+
+        Assert.IsGreaterThan(20_000, peak);
+        Assert.IsLessThanOrEqualTo(26_215, peak);
+    }
+
     private static short ReadSample(byte[] wav, int sampleIndex) =>
         BinaryPrimitives.ReadInt16LittleEndian(wav.AsSpan(44 + (sampleIndex * 2), 2));
 }
