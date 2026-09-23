@@ -58,7 +58,11 @@ class CoordinatorClient(
             body = requestBody,
             extraHeaders = mapOf("Idempotency-Key" to idempotencyKey),
         )
-        return parseTrial(body.getJSONObject("trial"))
+        return parseTrial(
+            trial = body.getJSONObject("trial"),
+            expectedTrialId = null,
+            expectedRequest = request,
+        )
     }
 
     fun getTrial(trialId: String): CoordinatorTrial {
@@ -68,7 +72,11 @@ class CoordinatorClient(
             throw IllegalArgumentException("Enter a valid coordinator trial UUID")
         }
         val body = request(method = "GET", path = "/v1/trials/$normalizedId")
-        return parseTrial(body.getJSONObject("trial"))
+        return parseTrial(
+            trial = body.getJSONObject("trial"),
+            expectedTrialId = normalizedId,
+            expectedRequest = null,
+        )
     }
 
     fun createYouTubeTrial(
@@ -141,14 +149,46 @@ class CoordinatorClient(
         }
     }
 
-    private fun parseTrial(trial: JSONObject): CoordinatorTrial = CoordinatorTrial(
-        id = UUID.fromString(trial.getString("id")).toString(),
-        assetId = trial.getString("asset_id"),
-        assetSha256 = ProbeInput.assetSha256(trial.getString("asset_sha256")),
-        requestedPositionMs = trial.getLong("requested_position_ms"),
-        effectiveAtUnixMs = trial.getLong("effective_at_unix_ms"),
-        createdAtUnixMs = trial.getLong("created_at_unix_ms"),
-    )
+    private fun parseTrial(
+        trial: JSONObject,
+        expectedTrialId: String?,
+        expectedRequest: CoordinatorTrialRequest?,
+    ): CoordinatorTrial {
+        val parsed = CoordinatorTrial(
+            id = try {
+                UUID.fromString(trial.getString("id")).toString()
+            } catch (_: IllegalArgumentException) {
+                throw CoordinatorException("Coordinator returned invalid trial data")
+            },
+            assetId = trial.getString("asset_id"),
+            assetSha256 = ProbeInput.assetSha256(trial.getString("asset_sha256")),
+            requestedPositionMs = trial.getLong("requested_position_ms"),
+            effectiveAtUnixMs = trial.getLong("effective_at_unix_ms"),
+            createdAtUnixMs = trial.getLong("created_at_unix_ms"),
+        )
+        val creationLeadMs = try {
+            Math.subtractExact(parsed.effectiveAtUnixMs, parsed.createdAtUnixMs)
+        } catch (_: ArithmeticException) {
+            throw CoordinatorException("Coordinator returned invalid trial data")
+        }
+        if (creationLeadMs !in MINIMUM_TRIAL_LEAD_MS..MAXIMUM_TRIAL_LEAD_MS) {
+            throw CoordinatorException("Coordinator returned invalid trial data")
+        }
+        if (expectedTrialId != null && parsed.id != expectedTrialId) {
+            throw CoordinatorException("Coordinator returned a different trial")
+        }
+        if (
+            expectedRequest != null && (
+                parsed.assetId != expectedRequest.assetId ||
+                    !parsed.assetSha256.equals(expectedRequest.assetSha256, ignoreCase = true) ||
+                    parsed.requestedPositionMs != expectedRequest.requestedPositionMs ||
+                    parsed.effectiveAtUnixMs != expectedRequest.effectiveAtUnixMs
+                )
+        ) {
+            throw CoordinatorException("Coordinator trial does not match the request")
+        }
+        return parsed
+    }
 
     private fun parseYouTubeTrial(trial: JSONObject): YouTubeControlTrial = YouTubeControlTrial.parse(
         id = trial.getString("id"),
@@ -163,6 +203,8 @@ class CoordinatorClient(
         private val IDEMPOTENCY_KEY = Regex("^[A-Za-z0-9._:-]{1,128}$")
         private const val CONNECT_TIMEOUT_MS = 3_000
         private const val READ_TIMEOUT_MS = 3_000
+        private const val MINIMUM_TRIAL_LEAD_MS = 2_000L
+        private const val MAXIMUM_TRIAL_LEAD_MS = 30_000L
     }
 }
 
