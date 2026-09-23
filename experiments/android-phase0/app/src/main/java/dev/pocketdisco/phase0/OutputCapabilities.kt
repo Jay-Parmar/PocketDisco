@@ -1,21 +1,18 @@
 package dev.pocketdisco.phase0
 
-import android.Manifest
-import android.annotation.SuppressLint
 import android.bluetooth.BluetoothManager
 import android.content.Context
-import android.content.pm.PackageManager
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
 
-enum class OutputTransport(val isFanoutCandidate: Boolean) {
-    BUILT_IN(false),
-    WIRED(true),
-    BLUETOOTH(true),
-    USB(true),
-    HDMI(true),
-    OTHER(false),
+enum class OutputTransport {
+    BUILT_IN,
+    WIRED,
+    BLUETOOTH,
+    USB,
+    HDMI,
+    OTHER,
     ;
 
     companion object {
@@ -54,6 +51,38 @@ enum class OutputTransport(val isFanoutCandidate: Boolean) {
     }
 }
 
+enum class OutputTargetRole {
+    DIRECT,
+    SYSTEM_GROUP,
+    OBSERVE_ONLY,
+    ;
+
+    companion object {
+        fun fromAndroidType(type: Int): OutputTargetRole = when (type) {
+            AudioDeviceInfo.TYPE_WIRED_HEADSET,
+            AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+            AudioDeviceInfo.TYPE_LINE_ANALOG,
+            AudioDeviceInfo.TYPE_LINE_DIGITAL,
+            AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+            AudioDeviceInfo.TYPE_BLE_HEADSET,
+            AudioDeviceInfo.TYPE_BLE_SPEAKER,
+            AudioDeviceInfo.TYPE_USB_DEVICE,
+            AudioDeviceInfo.TYPE_USB_ACCESSORY,
+            AudioDeviceInfo.TYPE_USB_HEADSET,
+            AudioDeviceInfo.TYPE_HDMI,
+            AudioDeviceInfo.TYPE_HDMI_ARC,
+            AudioDeviceInfo.TYPE_HDMI_EARC,
+            -> DIRECT
+
+            AudioDeviceInfo.TYPE_HEARING_AID,
+            AudioDeviceInfo.TYPE_BLE_BROADCAST,
+            -> SYSTEM_GROUP
+
+            else -> OBSERVE_ONLY
+        }
+    }
+}
+
 enum class FeatureSupport {
     SUPPORTED,
     NOT_SUPPORTED,
@@ -75,6 +104,7 @@ data class OutputDeviceDescriptor(
     val label: String,
     val androidType: Int,
     val transport: OutputTransport,
+    val targetRole: OutputTargetRole,
 )
 
 data class OutputCapabilitySnapshot(
@@ -89,8 +119,8 @@ class AndroidOutputCapabilityProbe(private val context: Context) {
 
     fun snapshot(): OutputCapabilitySnapshot = OutputCapabilitySnapshot(
         sdkInt = Build.VERSION.SDK_INT,
-        leAudio = bluetoothFeature { it.isLeAudioSupported },
-        leAudioBroadcastSource = bluetoothFeature { it.isLeAudioBroadcastSourceSupported },
+        leAudio = leAudioSupport(),
+        leAudioBroadcastSource = leAudioBroadcastSourceSupport(),
         outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
             .map(::describe)
             .sortedWith(compareBy(OutputDeviceDescriptor::transport, OutputDeviceDescriptor::label)),
@@ -106,19 +136,27 @@ class AndroidOutputCapabilityProbe(private val context: Context) {
             label = label,
             androidType = device.type,
             transport = transport,
+            targetRole = OutputTargetRole.fromAndroidType(device.type),
         )
     }
 
-    @SuppressLint("MissingPermission")
-    private fun bluetoothFeature(read: (android.bluetooth.BluetoothAdapter) -> Int): FeatureSupport {
+    private fun leAudioSupport(): FeatureSupport {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return FeatureSupport.NOT_SUPPORTED
-        if (context.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-            return FeatureSupport.PERMISSION_REQUIRED
-        }
         val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
             ?: return FeatureSupport.NOT_SUPPORTED
         return try {
-            FeatureSupport.fromPlatformResult(read(adapter))
+            FeatureSupport.fromPlatformResult(adapter.isLeAudioSupported)
+        } catch (_: SecurityException) {
+            FeatureSupport.PERMISSION_REQUIRED
+        }
+    }
+
+    private fun leAudioBroadcastSourceSupport(): FeatureSupport {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return FeatureSupport.NOT_SUPPORTED
+        val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
+            ?: return FeatureSupport.NOT_SUPPORTED
+        return try {
+            FeatureSupport.fromPlatformResult(adapter.isLeAudioBroadcastSourceSupported)
         } catch (_: SecurityException) {
             FeatureSupport.PERMISSION_REQUIRED
         }

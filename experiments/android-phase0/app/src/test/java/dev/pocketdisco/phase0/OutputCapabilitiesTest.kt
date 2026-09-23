@@ -2,8 +2,6 @@ package dev.pocketdisco.phase0
 
 import android.media.AudioDeviceInfo
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OutputCapabilitiesTest {
@@ -32,13 +30,23 @@ class OutputCapabilitiesTest {
     }
 
     @Test
-    fun marksExternalOutputsAsFanoutCandidates() {
-        assertFalse(OutputTransport.BUILT_IN.isFanoutCandidate)
-        assertTrue(OutputTransport.WIRED.isFanoutCandidate)
-        assertTrue(OutputTransport.BLUETOOTH.isFanoutCandidate)
-        assertTrue(OutputTransport.USB.isFanoutCandidate)
-        assertTrue(OutputTransport.HDMI.isFanoutCandidate)
-        assertFalse(OutputTransport.OTHER.isFanoutCandidate)
+    fun separatesDirectTargetsFromSystemGroups() {
+        assertEquals(
+            OutputTargetRole.DIRECT,
+            OutputTargetRole.fromAndroidType(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP),
+        )
+        assertEquals(
+            OutputTargetRole.OBSERVE_ONLY,
+            OutputTargetRole.fromAndroidType(AudioDeviceInfo.TYPE_BLUETOOTH_SCO),
+        )
+        assertEquals(
+            OutputTargetRole.SYSTEM_GROUP,
+            OutputTargetRole.fromAndroidType(AudioDeviceInfo.TYPE_BLE_BROADCAST),
+        )
+        assertEquals(
+            OutputTargetRole.OBSERVE_ONLY,
+            OutputTargetRole.fromAndroidType(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER),
+        )
     }
 
     @Test
