@@ -44,8 +44,7 @@ public static class FanoutSession
         var players = new List<MediaPlayer>(endpoints.Count);
         var sources = new List<MediaSource>(endpoints.Count);
         var readiness = new PlaybackReadiness(endpoints.Count);
-        var playbackFailure = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var startGate = new PlaybackStartGate();
         var controller = new MediaTimelineController();
 
         try
@@ -70,10 +69,8 @@ public static class FanoutSession
                 player.MediaOpened += (_, _) => readiness.MarkOpened(playerIndex);
                 player.MediaFailed += (_, eventArgs) =>
                 {
+                    startGate.MarkFailed(playerIndex, eventArgs.ErrorMessage);
                     readiness.MarkFailed(playerIndex, eventArgs.ErrorMessage);
-                    playbackFailure.TrySetException(
-                        new InvalidOperationException(
-                            $"output-{playerIndex + 1} failed: {eventArgs.ErrorMessage}"));
                 };
                 player.Source = source;
                 sources.Add(source);
@@ -95,17 +92,19 @@ public static class FanoutSession
                 Stopwatch.Frequency);
 
             controller.Position = plan.InitialPosition;
-            await WaitUntilAsync(plan.DeadlineTimestamp, cancellationToken);
+            var deadline = WaitUntilAsync(plan.DeadlineTimestamp, cancellationToken);
+            var beforeStart = await Task.WhenAny(deadline, startGate.Failure);
+            await beforeStart;
             var commandTimestamp = Stopwatch.GetTimestamp();
             var commandUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            controller.Resume();
+            startGate.IssueStart(controller.Resume);
 
             var remaining = duration - plan.InitialPosition;
             if (remaining > TimeSpan.Zero)
             {
                 var completed = await Task.WhenAny(
                     Task.Delay(remaining, cancellationToken),
-                    playbackFailure.Task);
+                    startGate.Failure);
                 await completed;
             }
 
