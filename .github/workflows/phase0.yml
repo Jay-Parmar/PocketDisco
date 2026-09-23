@@ -72,3 +72,25 @@ jobs:
           path: experiments/android-phase0/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 3
+
+  windows-audio:
+    name: Windows audio experiment
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.401
+      - name: Restore Windows audio experiment
+        working-directory: experiments/windows-multi-output
+        run: dotnet restore PocketDisco.WindowsMultiOutput.sln
+      - name: Build Windows audio experiment
+        working-directory: experiments/windows-multi-output
+        run: dotnet build PocketDisco.WindowsMultiOutput.sln -c Release --no-restore
+      - name: Test Windows audio experiment
+        working-directory: experiments/windows-multi-output
+        run: dotnet test PocketDisco.WindowsMultiOutput.sln -c Release --no-build
