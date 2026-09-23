@@ -121,19 +121,24 @@ class MultiOutputController(
     fun stop(reason: String = "operator") {
         scheduler.cancel()
         handler.removeCallbacks(pollRoutes)
-        val stoppedStatus = if (managedTracks.isEmpty()) null else status()
+        val hadTracks = managedTracks.isNotEmpty()
+        val stoppedStatus = if (hadTracks) runCatching(::status).getOrNull() else null
         managedTracks.forEach { managed ->
-            managed.track.removeOnRoutingChangedListener(managed.routingListener)
-            if (managed.track.playState != AudioTrack.PLAYSTATE_STOPPED) {
-                managed.track.stop()
+            runCatching {
+                managed.track.removeOnRoutingChangedListener(managed.routingListener)
             }
-            managed.track.release()
+            runCatching {
+                if (managed.track.playState != AudioTrack.PLAYSTATE_STOPPED) {
+                    managed.track.stop()
+                }
+            }
+            runCatching(managed.track::release)
         }
         managedTracks.clear()
         mode = null
         routeTracker.reset()
-        audioManager.abandonAudioFocusRequest(focusRequest)
-        if (stoppedStatus != null) emit("playback_stopped", stoppedStatus, "reason=$reason")
+        runCatching { audioManager.abandonAudioFocusRequest(focusRequest) }
+        if (hadTracks) emit("playback_stopped", stoppedStatus, "reason=$reason")
     }
 
     fun release() {
@@ -163,18 +168,24 @@ class MultiOutputController(
         )
         scheduler.scheduleAt(targetElapsedRealtimeMs) { actualElapsedRealtimeMs ->
             val firstCallNs = System.nanoTime()
-            managedTracks.forEach { it.track.play() }
-            val finalCallNs = System.nanoTime()
-            val playbackStatus = status()
-            emit(
-                name = "playback_started",
-                status = playbackStatus,
-                detail = "command_delta_ms=${actualElapsedRealtimeMs - targetElapsedRealtimeMs};" +
-                    "play_call_span_ns=${finalCallNs - firstCallNs}",
+            attemptPlaybackStart(
+                playActions = managedTracks.map { managed -> managed.track::play },
+                afterStarted = {
+                    val finalCallNs = System.nanoTime()
+                    val playbackStatus = status()
+                    emit(
+                        name = "playback_started",
+                        status = playbackStatus,
+                        detail = "command_delta_ms=${actualElapsedRealtimeMs - targetElapsedRealtimeMs};" +
+                            "play_call_span_ns=${finalCallNs - firstCallNs}",
+                    )
+                    if (!stopIfRouteLost(playbackStatus)) {
+                        handler.removeCallbacks(pollRoutes)
+                        handler.postDelayed(pollRoutes, ROUTE_WARMUP_MS)
+                    }
+                },
+                onFailure = ::handlePlaybackStartFailure,
             )
-            if (stopIfRouteLost(playbackStatus)) return@scheduleAt
-            handler.removeCallbacks(pollRoutes)
-            handler.postDelayed(pollRoutes, ROUTE_WARMUP_MS)
         }
     }
 
@@ -266,6 +277,19 @@ class MultiOutputController(
         return true
     }
 
+    private fun handlePlaybackStartFailure(error: Exception) {
+        val failureStatus = runCatching(::status).getOrNull()
+        try {
+            emit(
+                name = "playback_start_failed",
+                status = failureStatus,
+                detail = "error=${error.javaClass.simpleName}",
+            )
+        } finally {
+            stop("start_failed")
+        }
+    }
+
     private fun emit(
         name: String,
         status: MultiOutputStatus?,
@@ -292,4 +316,17 @@ class MultiOutputController(
         private const val ROUTE_WARMUP_MS = 500L
         private const val ROUTE_POLL_INTERVAL_MS = 1_000L
     }
+}
+
+internal fun attemptPlaybackStart(
+    playActions: List<() -> Unit>,
+    afterStarted: () -> Unit,
+    onFailure: (Exception) -> Unit,
+): Boolean = try {
+    playActions.forEach { it() }
+    afterStarted()
+    true
+} catch (error: Exception) {
+    onFailure(error)
+    false
 }
