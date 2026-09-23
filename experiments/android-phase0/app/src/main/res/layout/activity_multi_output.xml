@@ -85,6 +85,44 @@
             android:textStyle="bold" />
 
         <EditText
+            android:id="@+id/multi_output_scenario_id"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Shared scenario ID, for example mixed-01"
+            android:importantForAutofill="no"
+            android:inputType="textNoSuggestions" />
+
+        <EditText
+            android:id="@+id/multi_output_client_id"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Stable client ID, for example android-phone"
+            android:importantForAutofill="no"
+            android:inputType="textNoSuggestions" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Client environment"
+            android:textStyle="bold" />
+
+        <Spinner
+            android:id="@+id/multi_output_environment"
+            android:layout_width="match_parent"
+            android:layout_height="48dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Observed output category"
+            android:textStyle="bold" />
+
+        <Spinner
+            android:id="@+id/multi_output_category"
+            android:layout_width="match_parent"
+            android:layout_height="48dp" />
+
+        <EditText
             android:id="@+id/multi_output_coordinator_url"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -189,6 +227,13 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:text="Export output telemetry" />
+
+        <Button
+            android:id="@+id/export_generated_sync"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Export coordinated telemetry v2" />
 
         <TextView
             android:id="@+id/multi_output_status"

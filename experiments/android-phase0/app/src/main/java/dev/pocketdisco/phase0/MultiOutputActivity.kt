@@ -31,6 +31,7 @@ class MultiOutputActivity : Activity() {
     private lateinit var capabilityProbe: AndroidOutputCapabilityProbe
     private lateinit var controller: MultiOutputController
     private lateinit var recorder: TelemetryRecorder
+    private lateinit var generatedSyncRecorder: GeneratedSyncTelemetryRecorder
     private lateinit var audioManager: AudioManager
     private lateinit var capabilityStatus: TextView
     private lateinit var firstOutput: Spinner
@@ -42,6 +43,10 @@ class MultiOutputActivity : Activity() {
     private lateinit var coordinatorToken: EditText
     private lateinit var coordinatorTrialId: EditText
     private lateinit var coordinatorRoute: RadioGroup
+    private lateinit var scenarioId: EditText
+    private lateinit var clientId: EditText
+    private lateinit var environment: Spinner
+    private lateinit var outputCategory: Spinner
     private lateinit var clockStatus: TextView
     private lateinit var syncClockButton: Button
     private lateinit var createTrialButton: Button
@@ -56,6 +61,8 @@ class MultiOutputActivity : Activity() {
     private var coordinatorGeneration = 0L
     private var clockEstimate: ClockEstimate? = null
     private var clockBaseUrl: String? = null
+    private val environments = GeneratedSyncEnvironment.values().toList()
+    private val outputCategories = GeneratedSyncOutputCategory.values().toList()
     private val deviceCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
             refreshOutputs()
@@ -73,8 +80,10 @@ class MultiOutputActivity : Activity() {
         capabilityProbe = AndroidOutputCapabilityProbe(this)
         audioManager = getSystemService(AudioManager::class.java)
         recorder = TelemetryRecorder(System::currentTimeMillis, SystemClock::elapsedRealtime)
+        generatedSyncRecorder = GeneratedSyncTelemetryRecorder()
         controller = MultiOutputController(this, SystemClock::elapsedRealtime, ::onProbeEvent)
         bindViews()
+        configureTelemetrySelectors()
         setCoordinatorBusy(false)
         wireControls()
         refreshOutputs()
@@ -94,6 +103,7 @@ class MultiOutputActivity : Activity() {
         clockBaseUrl = null
         clockStatus.text = "Clock: sample required"
         setCoordinatorBusy(false)
+        generatedSyncRecorder.clearActive()
         controller.stop("activity_stopped")
         setKeepScreenAwake(false)
         if (deviceCallbackRegistered) {
@@ -113,13 +123,20 @@ class MultiOutputActivity : Activity() {
     @Deprecated("Activity result API keeps this throwaway probe dependency-light")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != EXPORT_REQUEST || resultCode != RESULT_OK) return
+        if (requestCode !in setOf(RAW_EXPORT_REQUEST, SYNC_EXPORT_REQUEST) || resultCode != RESULT_OK) {
+            return
+        }
         val destination = data?.data ?: return
         try {
-            record("export_requested")
+            val content = if (requestCode == RAW_EXPORT_REQUEST) {
+                record("export_requested")
+                recorder.toNdjson()
+            } else {
+                generatedSyncRecorder.toNdjson()
+            }
             contentResolver.openOutputStream(destination)?.bufferedWriter(Charsets.UTF_8).use { writer ->
                 requireNotNull(writer) { "Could not open export destination" }
-                writer.write(recorder.toNdjson())
+                writer.write(content)
             }
             toast("Telemetry exported")
         } catch (error: Exception) {
@@ -138,10 +155,27 @@ class MultiOutputActivity : Activity() {
         coordinatorToken = findViewById(R.id.multi_output_coordinator_token)
         coordinatorTrialId = findViewById(R.id.multi_output_coordinator_trial_id)
         coordinatorRoute = findViewById(R.id.coordinator_output_route)
+        scenarioId = findViewById(R.id.multi_output_scenario_id)
+        clientId = findViewById(R.id.multi_output_client_id)
+        environment = findViewById(R.id.multi_output_environment)
+        outputCategory = findViewById(R.id.multi_output_category)
         clockStatus = findViewById(R.id.multi_output_clock_status)
         syncClockButton = findViewById(R.id.sync_multi_output_clock)
         createTrialButton = findViewById(R.id.create_generated_trial)
         fetchTrialButton = findViewById(R.id.fetch_generated_trial)
+    }
+
+    private fun configureTelemetrySelectors() {
+        environment.adapter = enumAdapter(environments.map { it.wireValue })
+        outputCategory.adapter = enumAdapter(outputCategories.map { it.wireValue })
+    }
+
+    private fun enumAdapter(values: List<String>) = ArrayAdapter(
+        this,
+        android.R.layout.simple_spinner_item,
+        values.map { it.replace('_', ' ') },
+    ).apply {
+        setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
     }
 
     private fun wireControls() {
@@ -151,6 +185,7 @@ class MultiOutputActivity : Activity() {
             runAction {
                 requireSafeVolume()
                 cancelCoordinatorTask()
+                generatedSyncRecorder.clearActive()
                 activeTrialId = localTrialId
                 controller.scheduleSystemRoute(SystemClock.elapsedRealtime() + START_LEAD_MS)
             }
@@ -159,6 +194,7 @@ class MultiOutputActivity : Activity() {
             runAction {
                 requireSafeVolume()
                 cancelCoordinatorTask()
+                generatedSyncRecorder.clearActive()
                 activeTrialId = localTrialId
                 val first = directTargets[firstOutput.selectedItemPosition]
                 val second = directTargets[secondOutput.selectedItemPosition]
@@ -180,10 +216,21 @@ class MultiOutputActivity : Activity() {
         }
         findViewById<Button>(R.id.stop_multi_output).setOnClickListener {
             cancelCoordinatorTask()
+            generatedSyncRecorder.clearActive()
             controller.stop()
             probeStatus.text = "Stopped"
         }
-        findViewById<Button>(R.id.export_multi_output).setOnClickListener { launchExport() }
+        findViewById<Button>(R.id.export_multi_output).setOnClickListener {
+            launchExport(RAW_EXPORT_REQUEST, "android-output")
+        }
+        findViewById<Button>(R.id.export_generated_sync).setOnClickListener {
+            runAction {
+                require(generatedSyncRecorder.size() > 0) {
+                    "Complete a coordinated generated signal trial first"
+                }
+                launchExport(SYNC_EXPORT_REQUEST, "android-generated-sync-v2")
+            }
+        }
     }
 
     private fun refreshOutputs() {
@@ -230,6 +277,7 @@ class MultiOutputActivity : Activity() {
 
     private fun onProbeEvent(event: MultiOutputProbeEvent) {
         keepScreenAwakeForEvent(event.name)?.let(::setKeepScreenAwake)
+        generatedSyncRecorder.record(event)
         record(
             name = event.name,
             detail = MultiOutputTelemetry.eventDetail(event),
@@ -306,6 +354,7 @@ class MultiOutputActivity : Activity() {
     private fun createCoordinatorTrial() {
         requireSafeVolume()
         val route = selectedCoordinatorRoute()
+        val identity = selectedGeneratedIdentity(route)
         val estimate = currentClockEstimate()
         val (baseUrl, token) = coordinatorCredentials()
         require(baseUrl == clockBaseUrl) {
@@ -325,7 +374,7 @@ class MultiOutputActivity : Activity() {
             try {
                 val trial = CoordinatorClient(baseUrl, token).createTrial(request, idempotencyKey)
                 postCoordinatorResult(generation) {
-                    runAction { applyCoordinatorTrial(trial, route) }
+                    runAction { applyCoordinatorTrial(trial, route, identity) }
                 }
             } catch (error: Exception) {
                 coordinatorFailure(generation, "create_trial", error)
@@ -336,6 +385,7 @@ class MultiOutputActivity : Activity() {
     private fun fetchCoordinatorTrial() {
         requireSafeVolume()
         val route = selectedCoordinatorRoute()
+        val identity = selectedGeneratedIdentity(route)
         currentClockEstimate()
         val (baseUrl, token) = coordinatorCredentials()
         require(baseUrl == clockBaseUrl) {
@@ -346,7 +396,7 @@ class MultiOutputActivity : Activity() {
             try {
                 val trial = CoordinatorClient(baseUrl, token).getTrial(requestedTrialId)
                 postCoordinatorResult(generation) {
-                    runAction { applyCoordinatorTrial(trial, route) }
+                    runAction { applyCoordinatorTrial(trial, route, identity) }
                 }
             } catch (error: Exception) {
                 coordinatorFailure(generation, "fetch_trial", error)
@@ -357,12 +407,14 @@ class MultiOutputActivity : Activity() {
     private fun applyCoordinatorTrial(
         trial: CoordinatorTrial,
         route: CoordinatedOutputRoute,
+        identity: GeneratedSyncIdentity,
     ) {
         requireSafeVolume()
+        val estimate = currentClockEstimate()
         val plan = try {
             GeneratedSignalTrialPlanner.plan(
                 trial = trial,
-                clockEstimate = currentClockEstimate(),
+                clockEstimate = estimate,
                 currentElapsedRealtimeMs = SystemClock.elapsedRealtime(),
             )
         } catch (error: Exception) {
@@ -375,12 +427,21 @@ class MultiOutputActivity : Activity() {
 
         coordinatorTrialId.setText(plan.trialId)
         activeTrialId = plan.trialId
+        generatedSyncRecorder.begin(
+            GeneratedSyncContext(
+                identity = identity,
+                trialId = plan.trialId,
+                targetTimestampMs = plan.target.wallTimeMs,
+                targetElapsedRealtimeMs = plan.target.elapsedRealtimeMs,
+                clockUncertaintyMs = estimate.uncertaintyMs,
+            ),
+        )
         record(
             name = "coordinator_trial_applied",
             detail = "trial_id=${plan.trialId};signal_id=${ClickSignal.SIGNAL_ID};" +
                 "target_server_ms=${plan.target.wallTimeMs};" +
                 "target_elapsed_realtime_ms=${plan.target.elapsedRealtimeMs};" +
-                "clock_uncertainty_ms=${currentClockEstimate().uncertaintyMs}",
+                "clock_uncertainty_ms=${estimate.uncertaintyMs}",
         )
         try {
             when (route) {
@@ -397,6 +458,8 @@ class MultiOutputActivity : Activity() {
                 }
             }
         } catch (error: Exception) {
+            generatedSyncRecorder.recordFailure("schedule_failed")
+            generatedSyncRecorder.clearActive()
             record(
                 name = "coordinator_schedule_failed",
                 detail = "trial_id=${plan.trialId};error_type=${error.javaClass.simpleName}",
@@ -422,6 +485,18 @@ class MultiOutputActivity : Activity() {
 
             else -> throw IllegalStateException("Select a coordinator output route")
         }
+
+    private fun selectedGeneratedIdentity(route: CoordinatedOutputRoute): GeneratedSyncIdentity =
+        GeneratedSyncIdentity.fromInput(
+            scenarioId = scenarioId.text.toString(),
+            deviceId = clientId.text.toString(),
+            environment = environments[environment.safeSelectedPosition()],
+            outputCategory = outputCategories[outputCategory.safeSelectedPosition()],
+            routeMode = when (route) {
+                CoordinatedOutputRoute.System -> GeneratedSyncRouteMode.SYSTEM_GROUP
+                is CoordinatedOutputRoute.Dual -> GeneratedSyncRouteMode.APP_FANOUT
+            },
+        )
 
     private fun coordinatorCredentials(): Pair<String, String> {
         val baseUrl = ProbeInput.coordinatorBaseUrl(coordinatorUrl.text.toString())
@@ -482,6 +557,10 @@ class MultiOutputActivity : Activity() {
         coordinatorUrl.isEnabled = !busy
         coordinatorToken.isEnabled = !busy
         coordinatorTrialId.isEnabled = !busy
+        scenarioId.isEnabled = !busy
+        clientId.isEnabled = !busy
+        environment.isEnabled = !busy
+        outputCategory.isEnabled = !busy
     }
 
     private fun requireSafeVolume() {
@@ -493,13 +572,13 @@ class MultiOutputActivity : Activity() {
         if (enabled) window.addFlags(flag) else window.clearFlags(flag)
     }
 
-    private fun launchExport() {
+    private fun launchExport(requestCode: Int, label: String) {
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "application/x-ndjson"
-            putExtra(Intent.EXTRA_TITLE, "pocketdisco-android-output-$activeTrialId.jsonl")
+            putExtra(Intent.EXTRA_TITLE, "pocketdisco-$label-$activeTrialId.jsonl")
         }
-        startActivityForResult(intent, EXPORT_REQUEST)
+        startActivityForResult(intent, requestCode)
     }
 
     private fun record(
@@ -534,7 +613,8 @@ class MultiOutputActivity : Activity() {
     }
 
     companion object {
-        private const val EXPORT_REQUEST = 1201
+        private const val RAW_EXPORT_REQUEST = 1201
+        private const val SYNC_EXPORT_REQUEST = 1202
         private const val START_LEAD_MS = 5_000L
         private const val COORDINATOR_LEAD_TIME_MS = 25_000L
         private const val CLOCK_SAMPLE_COUNT = 7
