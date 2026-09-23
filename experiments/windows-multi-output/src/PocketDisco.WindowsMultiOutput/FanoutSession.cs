@@ -65,14 +65,12 @@ public static class FanoutSession
                 var device = await DeviceInformation.CreateFromIdAsync(endpoint.InternalId);
                 var source = MediaSource.CreateFromStorageFile(file);
                 sources.Add(source);
-                var player = new MediaPlayer
-                {
-                    AutoPlay = false,
-                    AudioDevice = device,
-                    RealTimePlayback = true,
-                    Volume = SafeVolume,
-                };
+                var player = new MediaPlayer();
                 players.Add(player);
+                player.AutoPlay = false;
+                player.AudioDevice = device;
+                player.RealTimePlayback = true;
+                player.Volume = SafeVolume;
 
                 player.CommandManager.IsEnabled = false;
                 player.TimelineController = controller;
