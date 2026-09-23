@@ -1,6 +1,9 @@
 .local-tools/
 .gradle/
 **/build/
+**/bin/
+**/obj/
+**/TestResults/
 local.properties
 .idea/
 *.iml
