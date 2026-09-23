@@ -45,7 +45,12 @@ dotnet run --project src/PocketDisco.WindowsMultiOutput -c Release -- `
   --devices 0,1 `
   --duration-seconds 15 `
   --coordinator-url http://192.168.1.20:8765 `
-  --coordinator-trial create
+  --coordinator-trial create `
+  --scenario-id mixed-01 `
+  --client-id windows-laptop `
+  --output-category mixed `
+  --telemetry-file windows-raw.ndjson `
+  --sync-telemetry-file windows-sync.ndjson
 ```
 
 The command prints the trial UUID before playback. Use that UUID instead of
@@ -53,6 +58,12 @@ The command prints the trial UUID before playback. Use that UUID instead of
 for both Windows outputs, takes seven clock samples, and accepts only generated
 signal trials with at least five seconds remaining. HTTP is limited to loopback
 and private LAN addresses. Use HTTPS for other hosts.
+
+The raw telemetry file keeps the existing per-output schema v1 events. The sync
+telemetry file contains one schema v2 `command_issued` record and one
+`playback_observed` record for the Windows client. The playback observation is
+recorded only after both media sessions report `Playing`. These records do not
+contain endpoint IDs, endpoint names, credentials, or acoustic claims.
 
 Remove the token from the current shell after the trial:
 
