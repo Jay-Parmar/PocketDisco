@@ -36,6 +36,25 @@ data class MultiOutputProbeEvent(
     val detail: String = "",
 )
 
+class PlaybackObservationTracker {
+    private var playbackObserved = false
+
+    fun observe(status: MultiOutputStatus): Boolean {
+        if (playbackObserved || status.tracks.isEmpty()) return false
+        val observed = status.tracks.all { track ->
+            track.actualDeviceIds.isNotEmpty() &&
+                track.framePosition != null &&
+                track.frameNanoTime != null
+        }
+        if (observed) playbackObserved = true
+        return observed
+    }
+
+    fun reset() {
+        playbackObserved = false
+    }
+}
+
 class MultiOutputController(
     context: Context,
     private val elapsedRealtimeMs: () -> Long,
@@ -60,6 +79,7 @@ class MultiOutputController(
         .build()
     private val managedTracks = mutableListOf<ManagedTrack>()
     private val routeTracker = OutputRouteTracker()
+    private val playbackObservationTracker = PlaybackObservationTracker()
     private var mode: AndroidRouteMode? = null
     private val pollRoutes = object : Runnable {
         override fun run() {
@@ -137,6 +157,7 @@ class MultiOutputController(
         managedTracks.clear()
         mode = null
         routeTracker.reset()
+        playbackObservationTracker.reset()
         runCatching { audioManager.abandonAudioFocusRequest(focusRequest) }
         if (hadTracks) emit("playback_stopped", stoppedStatus, "reason=$reason")
     }
@@ -174,11 +195,12 @@ class MultiOutputController(
                     val finalCallNs = System.nanoTime()
                     val playbackStatus = status()
                     emit(
-                        name = "playback_started",
+                        name = "play_commands_issued",
                         status = playbackStatus,
                         detail = "command_delta_ms=${actualElapsedRealtimeMs - targetElapsedRealtimeMs};" +
                             "play_call_span_ns=${finalCallNs - firstCallNs}",
                     )
+                    emitPlaybackObserved(playbackStatus)
                     if (!stopIfRouteLost(playbackStatus)) {
                         handler.removeCallbacks(pollRoutes)
                         handler.postDelayed(pollRoutes, ROUTE_WARMUP_MS)
@@ -267,7 +289,14 @@ class MultiOutputController(
         if (managedTracks.isEmpty()) return false
         val currentStatus = status()
         emit(eventName, currentStatus)
+        emitPlaybackObserved(currentStatus)
         return !stopIfRouteLost(currentStatus)
+    }
+
+    private fun emitPlaybackObserved(currentStatus: MultiOutputStatus) {
+        if (playbackObservationTracker.observe(currentStatus)) {
+            emit("playback_observed", currentStatus)
+        }
     }
 
     private fun stopIfRouteLost(currentStatus: MultiOutputStatus): Boolean {
