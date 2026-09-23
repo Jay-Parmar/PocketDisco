@@ -19,6 +19,27 @@ Exit criteria:
 - YouTube is either explicitly experimental or removed based on results/policy guidance.
 - Spotify remains absent unless written approval is received.
 
+## Phase 0B - output and Windows feasibility (parallel)
+
+Deliverables:
+
+- Enumerate Windows render endpoints without persisting endpoint IDs or names.
+- Generate a local PCM click signal with no licensed-media dependency.
+- Run one Windows system-route trial and one two-endpoint application fanout trial.
+- Record per-endpoint readiness, scheduled start, failures, and route removal.
+- Measure initial acoustic skew and ten-minute drift on two physical outputs.
+- Reuse the Phase 0 coordinator control record for a later Android, emulator,
+  and Windows timing trial.
+
+Exit criteria:
+
+- The Windows proof builds and lists active render endpoints.
+- Two selected endpoints either complete a measured trial or produce a recorded
+  platform or hardware limitation.
+- Emulator evidence is labeled protocol-only and is not used as Bluetooth or
+  acoustic proof.
+- The final Windows product shell remains an explicit later decision.
+
 ## Phase 1 — repository and vertical slice (weeks 2–3)
 
 - Create React Native Android app with TypeScript strict mode.
@@ -113,4 +134,8 @@ Prototype WebRTC separately. Decide whether talk pauses music, uses push-to-talk
 
 ### Windows
 
-Reuse `domain`, `protocol`, networking, and much of the React UI. Implement a separate Windows playback/timing adapter. Choose React Native Windows if UI reuse is the priority and required native modules exist; choose React web + Tauri/Electron if official providers primarily expose browser SDKs. Repeat provider approval because Android authorization does not imply Windows authorization.
+The native endpoint and timing proof starts in Phase 0B. After it reports actual
+hardware behavior, choose React Native Windows if UI reuse is the priority and
+required native modules exist, or React web plus Tauri/Electron if official
+providers primarily expose browser SDKs. Repeat provider approval because
+Android authorization does not imply Windows authorization.

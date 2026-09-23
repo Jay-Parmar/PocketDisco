@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pocketdisco.invalid/schemas/sync-telemetry-v2.json",
+  "title": "PocketDisco mixed sync telemetry observation",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "event_type",
+    "scenario_id",
+    "trial_id",
+    "start_id",
+    "device_id",
+    "platform",
+    "environment",
+    "provider",
+    "signal_id",
+    "signal_sha256",
+    "output_category",
+    "route_mode",
+    "outcome"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "event_type": {
+      "enum": ["command_issued", "playback_observed", "acoustic_onset"]
+    },
+    "scenario_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trial_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "start_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "device_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "platform": {
+      "enum": ["android", "windows"]
+    },
+    "environment": {
+      "enum": ["physical", "emulator"]
+    },
+    "provider": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signal_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signal_sha256": {
+      "type": "string",
+      "pattern": "^[0-9A-Fa-f]{64}$"
+    },
+    "output_category": {
+      "enum": ["built_in", "wired", "bluetooth", "usb", "virtual", "mixed"]
+    },
+    "route_mode": {
+      "enum": ["single", "system_group", "app_fanout"]
+    },
+    "output_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "outcome": {
+      "enum": ["ok", "failure"]
+    },
+    "timestamp_ms": {
+      "type": "number",
+      "minimum": 0
+    },
+    "target_timestamp_ms": {
+      "type": "number",
+      "minimum": 0
+    },
+    "clock_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "clock_source": {
+      "enum": ["coordinator_estimate", "external_capture"]
+    },
+    "clock_uncertainty_ms": {
+      "type": "number",
+      "minimum": 0
+    },
+    "failure_reason": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "ok"
+          }
+        },
+        "required": ["outcome"]
+      },
+      "then": {
+        "required": [
+          "timestamp_ms",
+          "clock_id",
+          "clock_source",
+          "clock_uncertainty_ms"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "failure"
+          }
+        },
+        "required": ["outcome"]
+      },
+      "then": {
+        "required": ["failure_reason"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "enum": ["command_issued", "playback_observed"]
+          }
+        },
+        "required": ["event_type"]
+      },
+      "then": {
+        "not": {
+          "required": ["output_id"]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "enum": ["command_issued", "playback_observed"]
+          },
+          "outcome": {
+            "const": "ok"
+          }
+        },
+        "required": ["event_type", "outcome"]
+      },
+      "then": {
+        "required": ["target_timestamp_ms"],
+        "properties": {
+          "clock_source": {
+            "const": "coordinator_estimate"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "acoustic_onset"
+          }
+        },
+        "required": ["event_type"]
+      },
+      "then": {
+        "required": ["output_id"],
+        "not": {
+          "required": ["target_timestamp_ms"]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "acoustic_onset"
+          },
+          "outcome": {
+            "const": "ok"
+          }
+        },
+        "required": ["event_type", "outcome"]
+      },
+      "then": {
+        "properties": {
+          "clock_source": {
+            "const": "external_capture"
+          }
+        }
+      }
+    }
+  ]
+}

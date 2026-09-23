@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "record_type": "mixed_sync_operator_attempt_ledger",
+  "evidence_id": "P0-MIX-20260923-01",
+  "scenario_id": "mixed-20260924-01",
+  "attempts_started": 10,
+  "valid_attempts": 10,
+  "failed_or_retried_attempts": 0,
+  "attempts": [
+    {
+      "attempt": 1,
+      "trial_id": "c34ae193-5e4a-4c3b-91ea-9e6fe9c9d1a1",
+      "outcome": "valid"
+    },
+    {
+      "attempt": 2,
+      "trial_id": "37065c99-307f-4224-9b33-b16e02d5802a",
+      "outcome": "valid"
+    },
+    {
+      "attempt": 3,
+      "trial_id": "8d2c02c6-2c4f-4603-a634-3ea538289d70",
+      "outcome": "valid"
+    },
+    {
+      "attempt": 4,
+      "trial_id": "79a01d6f-c62a-4704-85a9-60bb8f21b14c",
+      "outcome": "valid"
+    },
+    {
+      "attempt": 5,
+      "trial_id": "4c5603c7-fb07-43c4-9d84-ccffa4dee7e1",
+      "outcome": "valid"
+    },
+    {
+      "attempt": 6,
+      "trial_id": "3ebd1af7-586e-4281-bade-23c2f2af600e",
+      "outcome": "valid"
+    },
+    {
+      "attempt": 7,
+      "trial_id": "731f793e-41da-44b8-b0d4-02848cecaf27",
+      "outcome": "valid"
+    },
+    {
+      "attempt": 8,
+      "trial_id": "ec2e2e7a-3a7d-4569-9ac7-e4249217fb1c",
+      "outcome": "valid"
+    },
+    {
+      "attempt": 9,
+      "trial_id": "6e469385-0e40-4199-a3c6-f3b6f921e1b3",
+      "outcome": "valid"
+    },
+    {
+      "attempt": 10,
+      "trial_id": "04d62eec-6f36-47d3-bcbc-1b11531723de",
+      "outcome": "valid"
+    }
+  ]
+}
