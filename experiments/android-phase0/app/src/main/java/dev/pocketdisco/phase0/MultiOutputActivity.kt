@@ -13,6 +13,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
+import android.view.WindowManager
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.CheckBox
@@ -69,6 +70,7 @@ class MultiOutputActivity : Activity() {
 
     override fun onStop() {
         controller.stop("activity_stopped")
+        setKeepScreenAwake(false)
         if (deviceCallbackRegistered) {
             audioManager.unregisterAudioDeviceCallback(deviceCallback)
             deviceCallbackRegistered = false
@@ -177,6 +179,7 @@ class MultiOutputActivity : Activity() {
     }
 
     private fun onProbeEvent(event: MultiOutputProbeEvent) {
+        keepScreenAwakeForEvent(event.name)?.let(::setKeepScreenAwake)
         record(
             name = event.name,
             detail = MultiOutputTelemetry.eventDetail(event),
@@ -201,6 +204,11 @@ class MultiOutputActivity : Activity() {
 
     private fun requireSafeVolume() {
         require(safeVolumeConfirmed.isChecked) { "Confirm a safe listening volume first" }
+    }
+
+    private fun setKeepScreenAwake(enabled: Boolean) {
+        val flag = WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        if (enabled) window.addFlags(flag) else window.clearFlags(flag)
     }
 
     private fun launchExport() {
@@ -247,4 +255,10 @@ class MultiOutputActivity : Activity() {
         private const val EXPORT_REQUEST = 1201
         private const val START_LEAD_MS = 5_000L
     }
+}
+
+internal fun keepScreenAwakeForEvent(eventName: String): Boolean? = when (eventName) {
+    "playback_scheduled" -> true
+    "playback_stopped" -> false
+    else -> null
 }
