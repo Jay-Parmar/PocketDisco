@@ -12,6 +12,7 @@ testing documents.
 - [Visible YouTube experiment protocol](youtube-experiment-protocol.md)
 - [Windows multi-output probe protocol](windows-multi-output-protocol.md)
 - [Android multi-output probe protocol](android-multi-output-protocol.md)
+- [Mixed-platform generated-signal protocol](mixed-platform-sync-protocol.md)
 - [Phase 0 gate checklist](gate-checklist.md)
 - [Physical-device smoke probe records](device-runs/)
 - [Windows multi-output run record](device-runs/2026-09-23-windows-multi-output.md)
