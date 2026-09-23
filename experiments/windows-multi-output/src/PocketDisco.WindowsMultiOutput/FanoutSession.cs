@@ -64,6 +64,7 @@ public static class FanoutSession
                 var endpoint = endpoints[index];
                 var device = await DeviceInformation.CreateFromIdAsync(endpoint.InternalId);
                 var source = MediaSource.CreateFromStorageFile(file);
+                sources.Add(source);
                 var player = new MediaPlayer
                 {
                     AutoPlay = false,
@@ -71,6 +72,7 @@ public static class FanoutSession
                     RealTimePlayback = true,
                     Volume = SafeVolume,
                 };
+                players.Add(player);
 
                 player.CommandManager.IsEnabled = false;
                 player.TimelineController = controller;
@@ -82,8 +84,6 @@ public static class FanoutSession
                 };
                 player.MediaEnded += (_, _) => completion.MarkEnded(playerIndex);
                 player.Source = source;
-                sources.Add(source);
-                players.Add(player);
             }
 
             await PlaybackRunWaiter.WaitForReadinessAsync(
