@@ -74,6 +74,8 @@ def scenario_args(path: Path, scenario_id: str = "mixed-01") -> list[str]:
         scenario_id,
         "--format",
         "json",
+        "--minimum-starts",
+        "1",
     ]
     for client in CLIENTS:
         arguments.extend(["--expected-client", client])
@@ -81,6 +83,26 @@ def scenario_args(path: Path, scenario_id: str = "mixed-01") -> list[str]:
 
 
 class ScenarioCliTests(unittest.TestCase):
+    def test_minimum_starts_makes_short_scenario_incomplete(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "mixed.jsonl")
+            path.write_text(
+                "\n".join(json.dumps(item) for item in client_records()),
+                encoding="utf-8",
+            )
+            stdout = io.StringIO()
+            arguments = scenario_args(path)
+            minimum_index = arguments.index("--minimum-starts") + 1
+            arguments[minimum_index] = "2"
+
+            with redirect_stdout(stdout):
+                exit_code = main(arguments)
+
+        report = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 1)
+        self.assertFalse(report["summary"]["minimum_starts_met"])
+        self.assertEqual(report["configuration"]["minimum_valid_starts"], 2)
+
     def test_json_report_succeeds_without_claiming_acoustic_measurement(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory, "mixed.jsonl")

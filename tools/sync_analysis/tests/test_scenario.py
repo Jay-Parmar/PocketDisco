@@ -79,6 +79,14 @@ class ScenarioAnalysisTests(unittest.TestCase):
                 (("phone", "system"),),
             )
 
+    def test_config_requires_a_positive_minimum(self) -> None:
+        with self.assertRaisesRegex(ValueError, "minimum_valid_starts"):
+            ScenarioAnalysisConfig(
+                "mixed-01",
+                CLIENTS,
+                minimum_valid_starts=0,
+            )
+
     def test_reports_command_player_and_acoustic_timing_separately(self) -> None:
         records = client_measurements()
         records.extend(
@@ -265,6 +273,19 @@ class ScenarioAnalysisTests(unittest.TestCase):
 
         command_codes = report["measurements"][0]["failures"][0]["codes"]
         self.assertIn("target_mismatch", command_codes)
+
+    def test_minimum_valid_starts_marks_complete_coverage_incomplete(self) -> None:
+        report = analyze_scenario(
+            client_measurements(),
+            ScenarioAnalysisConfig(
+                "mixed-01",
+                CLIENTS,
+                minimum_valid_starts=2,
+            ),
+        )
+
+        self.assertFalse(report["summary"]["minimum_starts_met"])
+        self.assertFalse(report["summary"]["command_player_complete"])
 
     def test_rejects_legacy_records(self) -> None:
         record = observation("command_issued", "phone", 10_002)

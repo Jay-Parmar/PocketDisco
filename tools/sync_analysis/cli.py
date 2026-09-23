@@ -180,6 +180,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 scenario_id=args.scenario_id,
                 expected_clients=tuple(args.expected_client),
                 expected_acoustic_outputs=tuple(args.expected_acoustic_output),
+                minimum_valid_starts=args.minimum_starts,
             )
             report = analyze_scenario(observations, scenario_config)
         except ValueError as error:

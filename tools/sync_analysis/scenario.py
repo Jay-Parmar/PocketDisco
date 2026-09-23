@@ -18,6 +18,7 @@ class ScenarioAnalysisConfig:
     scenario_id: str
     expected_clients: tuple[str, ...]
     expected_acoustic_outputs: tuple[tuple[str, str], ...] = ()
+    minimum_valid_starts: int = 1
 
     def __post_init__(self) -> None:
         if not self.scenario_id.strip():
@@ -39,6 +40,8 @@ class ScenarioAnalysisConfig:
             raise ValueError("expected acoustic outputs must be unique")
         if self.expected_acoustic_outputs and len(self.expected_acoustic_outputs) < 2:
             raise ValueError("at least two expected acoustic outputs are required")
+        if self.minimum_valid_starts < 1:
+            raise ValueError("minimum_valid_starts must be at least 1")
 
 
 @dataclass(frozen=True, order=True)
@@ -337,11 +340,16 @@ def analyze_scenario(
     measurement_index = {
         str(measurement["measurement"]): measurement for measurement in measurements
     }
-    client_complete = all(
+    client_coverage_complete = all(
         measurement_index[name]["valid_starts"] == len(ordered_starts)
         and measurement_index[name]["failed_starts"] == 0
         for name in CLIENT_MEASUREMENTS
     )
+    minimum_starts_met = all(
+        measurement_index[name]["valid_starts"] >= config.minimum_valid_starts
+        for name in CLIENT_MEASUREMENTS
+    )
+    client_complete = client_coverage_complete and minimum_starts_met
     acoustic = measurement_index["acoustic_onset"]
     acoustic_records = sum(
         1 for observation in selected if observation.event_type == "acoustic_onset"
@@ -362,10 +370,12 @@ def analyze_scenario(
                 {"device_id": device_id, "output_id": output_id}
                 for device_id, output_id in config.expected_acoustic_outputs
             ],
+            "minimum_valid_starts": config.minimum_valid_starts,
         },
         "summary": {
             "records": len(selected),
             "attempted_starts": len(ordered_starts),
+            "minimum_starts_met": minimum_starts_met,
             "command_player_complete": client_complete,
             "acoustic_status": acoustic_status,
         },
@@ -390,6 +400,7 @@ def render_scenario_markdown(report: dict[str, object]) -> str:
         "",
         (
             f"Records: {summary['records']}. Starts: {summary['attempted_starts']}. "
+            f"Minimum valid starts: {report['configuration']['minimum_valid_starts']}. "
             f"Command and player coverage: {coverage}. "
             f"Acoustic status: {summary['acoustic_status']}."
         ),

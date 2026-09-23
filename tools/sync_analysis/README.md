@@ -55,6 +55,7 @@ Run a mixed scenario report with every expected client named explicitly:
 python -m tools.sync_analysis mixed.jsonl `
   --mode scenario `
   --scenario-id mixed-01 `
+  --minimum-starts 10 `
   --expected-client phone `
   --expected-client emulator `
   --expected-client windows
@@ -72,6 +73,9 @@ timestamps use one external capture clock and a run-local `output_id`. The
 scenario report never combines these measurements and does not evaluate the
 Phase 0 acoustic gate. An emulator can complete command and player coverage, but
 it is not physical Bluetooth or acoustic evidence.
+
+`--minimum-starts` requires that many complete command and player starts. Its
+default is ten.
 
 In scenario mode, exit code `0` means the requested records are complete. Exit
 code `1` means client coverage is incomplete, or requested acoustic outputs were
