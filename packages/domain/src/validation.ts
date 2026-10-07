@@ -131,10 +131,13 @@ export function parseServerEvent(value: unknown): ServerEvent {
     }
     case 'pong':
       return {v: 1, type: 'pong', server_time_ms: integer(data.server_time_ms)};
+    case 'command.ack':
+      return {v: 1, type: 'command.ack', payload: {command_id: uuid(object(data.payload).command_id)}};
     case 'error': {
       const payload = object(data.payload);
       return {v: 1, type: 'error', payload: {
         code: text(payload.code, 80), message: text(payload.message, 300),
+        ...(payload.command_id === undefined ? {} : {command_id: uuid(payload.command_id)}),
       }};
     }
     default:

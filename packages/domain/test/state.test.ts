@@ -91,3 +91,12 @@ test('hello chooses bounded heartbeat intervals', () => {
   assert.equal(parseServerEvent({v: 1, type: 'hello', payload: {heartbeat_interval_ms: 5000}}).type, 'hello');
   assert.throws(() => parseServerEvent({v: 1, type: 'hello', payload: {heartbeat_interval_ms: 0}}), ProtocolError);
 });
+
+test('command acknowledgements and errors validate their correlation IDs', () => {
+  const ack = {v: 1, type: 'command.ack', payload: {command_id: messageId}};
+  assert.deepEqual(parseServerEvent(ack), ack);
+  const error = {v: 1, type: 'error', payload: {code: 'rate_limited', message: 'Please wait.', command_id: messageId}};
+  assert.deepEqual(parseServerEvent(error), error);
+  assert.throws(() => parseServerEvent({...ack, payload: {command_id: 'invalid'}}), ProtocolError);
+  assert.throws(() => parseServerEvent({...error, payload: {...error.payload, command_id: 42}}), ProtocolError);
+});

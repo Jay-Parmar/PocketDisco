@@ -55,8 +55,12 @@ export type ServerEvent = SnapshotEvent | {
   server_time_ms: number;
 } | {
   v: 1;
+  type: 'command.ack';
+  payload: {command_id: string};
+} | {
+  v: 1;
   type: 'error';
-  payload: {code: string; message: string};
+  payload: {code: string; message: string; command_id?: string};
 } | {
   v: 1;
   type: 'unknown';
