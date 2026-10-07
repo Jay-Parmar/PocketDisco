@@ -88,7 +88,7 @@ class Auth:
     async def authenticate(self, value: str):
         if len(value) > 128:
             raise unauthorized()
-        async with self.database.sessions() as db:
+        async with self.database.transaction() as db:
             record = (
                 await db.execute(
                     select(User, AuthSession)
@@ -108,7 +108,7 @@ class Auth:
             return Identity(user.id, session.id, user.display_name)
 
     async def session_identity(self, session_id: str):
-        async with self.database.sessions() as db:
+        async with self.database.transaction() as db:
             record = (
                 await db.execute(
                     select(User, AuthSession)

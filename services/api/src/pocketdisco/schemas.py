@@ -83,6 +83,13 @@ class Command(BaseModel):
     command_id: UUID
     payload: dict = Field(default_factory=dict)
 
+    @field_validator("v", mode="before")
+    @classmethod
+    def integer_version(cls, value):
+        if type(value) is not int:
+            raise ValueError("Protocol version must be an integer")
+        return value
+
 
 class ReadyPayload(BaseModel):
     ready: bool = Field(strict=True)

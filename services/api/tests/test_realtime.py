@@ -145,3 +145,55 @@ def test_oversized_socket_message_closes(setup):
         with pytest.raises(WebSocketDisconnect) as error:
             socket.receive_json()
         assert error.value.code == 1009
+
+
+def test_binary_socket_message_closes(setup):
+    client, headers, host, created = setup
+    value = ticket(client, headers, created["snapshot"]["room_id"])
+    with client.websocket_connect(f"/v1/realtime?ticket={value}") as socket:
+        receive_type(socket, "room.snapshot")
+        socket.send_bytes(b"unsupported")
+        with pytest.raises(WebSocketDisconnect) as error:
+            socket.receive_json()
+        assert error.value.code == 1003
+
+
+@pytest.mark.parametrize("version", [True, 1.0, "1", 2])
+def test_invalid_protocol_version_is_rejected(setup, version):
+    client, headers, host, created = setup
+    value = ticket(client, headers, created["snapshot"]["room_id"])
+    with client.websocket_connect(f"/v1/realtime?ticket={value}") as socket:
+        receive_type(socket, "room.snapshot")
+        invalid = command("chat.send", {"body": "Bad version"})
+        invalid["v"] = version
+        socket.send_json(invalid)
+        assert receive_type(socket, "error")["payload"]["code"] == "invalid_command"
+
+
+def test_normal_disconnect_clears_presence_before_recovery(setup):
+    client, headers, host, created = setup
+    room_id = created["snapshot"]["room_id"]
+    value = ticket(client, headers, room_id)
+    with client.websocket_connect(f"/v1/realtime?ticket={value}") as socket:
+        receive_type(socket, "room.snapshot")
+        socket.send_json(command("member.ready", {"ready": True}))
+        receive_type(socket, "command.ack")
+    snapshot = client.get(f"/v1/rooms/{room_id}/snapshot", headers=headers).json()
+    assert not snapshot["members"][0]["connected"]
+    assert not snapshot["members"][0]["ready"]
+
+
+def test_active_socket_rejects_revoked_session(setup):
+    client, headers, host, created = setup
+    value = ticket(client, headers, created["snapshot"]["room_id"])
+    with client.websocket_connect(f"/v1/realtime?ticket={value}") as socket:
+        receive_type(socket, "room.snapshot")
+        for _ in range(2):
+            client.post("/v1/auth/refresh", json={"refresh_token": host["refresh_token"]})
+        outgoing = command("chat.send", {"body": "Should not arrive"})
+        socket.send_json(outgoing)
+        failure = receive_type(socket, "error")
+        assert failure["payload"]["command_id"] == outgoing["command_id"]
+        with pytest.raises(WebSocketDisconnect) as error:
+            socket.receive_json()
+        assert error.value.code == 4401

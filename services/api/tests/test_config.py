@@ -7,17 +7,25 @@ from pocketdisco.database import Database
 
 def test_no_implicit_local_store():
     with pytest.raises(ValidationError, match="PostgreSQL"):
-        Settings(_env_file=None, database_url="", redis_url="")
+        Settings(mode="production", _env_file=None, database_url="", redis_url="")
 
 
 def test_production_rejects_sqlite():
     with pytest.raises(ValidationError, match="PostgreSQL"):
-        Settings(database_url="sqlite+aiosqlite:///:memory:", redis_url="redis://localhost")
+        Settings(
+            mode="production",
+            database_url="sqlite+aiosqlite:///:memory:",
+            redis_url="redis://localhost",
+        )
 
 
 def test_production_requires_redis():
     with pytest.raises(ValidationError, match="Redis"):
-        Settings(database_url="postgresql+asyncpg://localhost/pocketdisco", redis_url="")
+        Settings(
+            mode="production",
+            database_url="postgresql+asyncpg://localhost/pocketdisco",
+            redis_url="",
+        )
 
 
 def test_local_store_is_explicit():

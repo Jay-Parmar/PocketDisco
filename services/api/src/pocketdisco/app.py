@@ -91,7 +91,7 @@ def create_app(settings: Settings | None = None):
 
     @app.get("/healthz")
     async def health():
-        async with database.sessions() as db:
+        async with database.transaction() as db:
             await db.execute(text("SELECT 1"))
         await live.start()
         return {"status": "ok", "mode": settings.mode}

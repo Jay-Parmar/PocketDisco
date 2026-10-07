@@ -3,6 +3,7 @@ import logging
 from contextlib import suppress
 from uuid import uuid4
 
+import anyio
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 from redis.exceptions import RedisError
@@ -195,11 +196,16 @@ def register_realtime(app, auth, rooms, live):
             else:
                 await websocket.close(1013)
         finally:
-            for task in tasks:
-                task.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
-            if connected:
-                try:
-                    await rooms.disconnect(connection.identity, connection.room_id, connection.id)
-                except (ApiError, RedisError, SQLAlchemyError):
-                    logger.warning("Presence cleanup deferred until expiry")
+            with anyio.move_on_after(5, shield=True) as cleanup:
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                if connected:
+                    try:
+                        await rooms.disconnect(
+                            connection.identity, connection.room_id, connection.id
+                        )
+                    except (ApiError, RedisError, SQLAlchemyError):
+                        logger.warning("Presence cleanup deferred until expiry")
+            if cleanup.cancel_called:
+                logger.warning("Presence cleanup timed out; waiting for expiry")
