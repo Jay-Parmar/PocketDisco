@@ -10,6 +10,7 @@ testing documents.
 - [Track rights checklist and evidence register](track-rights-register.md)
 - [Two-phone Media3 test protocol](two-phone-test-protocol.md)
 - [Visible YouTube experiment protocol](youtube-experiment-protocol.md)
+- [Android multi-output probe protocol](android-multi-output-protocol.md)
 - [Phase 0 gate checklist](gate-checklist.md)
 - [Physical-device smoke probe records](device-runs/)
 
@@ -25,6 +26,7 @@ Phase 0 answers four questions:
    private-room use case?
 4. Is a visible, foreground-only YouTube IFrame experiment honest and workable,
    or should it be retained internally or removed?
+5. Can a target Android device expose and verify a supported shared output route?
 
 Phase 0 does not add Spotify playback, public discovery, voice chat, production
 room services, or a complete application scaffold. The control backend must not

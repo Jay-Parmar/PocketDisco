@@ -16,5 +16,8 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.open_youtube).setOnClickListener {
             startActivity(Intent(this, YouTubeActivity::class.java))
         }
+        findViewById<Button>(R.id.open_multi_output).setOnClickListener {
+            startActivity(Intent(this, MultiOutputActivity::class.java))
+        }
     }
 }
