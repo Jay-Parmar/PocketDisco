@@ -1,0 +1,45 @@
+[Unit]
+Description=PocketDisco isolated Redis live state
+After=local-fs.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=pocketdisco-redis
+Group=pocketdisco-redis
+ExecStart=/opt/pocketdisco/bin/redis-server /etc/pocketdisco/redis.conf
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=30
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+CapabilityBoundingSet=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/pocketdisco/redis
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectProc=invisible
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET
+LockPersonality=true
+MemoryDenyWriteExecute=true
+IPAddressDeny=any
+IPAddressAllow=localhost
+MemoryMax=256M
+CPUQuota=25%
+TasksMax=32
+LimitNOFILE=1024
+LimitCORE=0
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=100
+
+[Install]
+WantedBy=multi-user.target
