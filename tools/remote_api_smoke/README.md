@@ -62,8 +62,8 @@ or Play release readiness.
 
 ```powershell
 .local-tools/api-venv/Scripts/python -m unittest discover -s tools/remote_api_smoke -v
-.local-tools/api-venv/Scripts/python -m ruff check --config services/api/pyproject.toml tools/remote_api_smoke
-.local-tools/api-venv/Scripts/python -m ruff format --check --config services/api/pyproject.toml tools/remote_api_smoke
+.local-tools/api-venv/Scripts/python -m ruff check tools/remote_api_smoke
+.local-tools/api-venv/Scripts/python -m ruff format --check tools/remote_api_smoke
 ```
 
 Tests start an isolated loopback API with SQLite and in-memory live state.
