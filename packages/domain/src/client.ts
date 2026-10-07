@@ -35,9 +35,13 @@ const initialState = (): ClientState => ({
 });
 
 function commandId(): string {
-  if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
-  if (typeof globalThis.crypto?.getRandomValues === 'function') {
-    const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  const crypto = (globalThis as unknown as {crypto?: {
+    randomUUID?: () => string;
+    getRandomValues?: (bytes: Uint8Array) => Uint8Array;
+  }}).crypto;
+  if (typeof crypto?.randomUUID === 'function') return crypto.randomUUID();
+  if (typeof crypto?.getRandomValues === 'function') {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
     bytes[6] = (bytes[6]! & 15) | 64;
     bytes[8] = (bytes[8]! & 63) | 128;
     const hex = Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
