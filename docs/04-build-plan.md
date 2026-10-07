@@ -2,6 +2,14 @@
 
 Estimate for one experienced full-time developer learning the Android-native portions: roughly 12–16 weeks to a small closed beta using licensed test audio. Part-time work can reasonably take 5–7 months. Provider review/approval is external and may take much longer or never arrive.
 
+## Current priority: 2026-10-07
+
+The owner authorized Android product development ahead of the remaining Phase 0
+release gates and paused desktop work. Build and test the private-room vertical
+slice first, then playback and the usable-room features. Follow the
+[mobile alpha contract](08-mobile-alpha.md). This changes implementation order,
+not the acoustic, rights, security, or Play release criteria.
+
 ## Phase 0 — feasibility gates (week 1)
 
 Deliverables:

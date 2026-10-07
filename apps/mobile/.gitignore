@@ -1,0 +1,12 @@
+node_modules/
+build/
+.gradle/
+.cxx/
+.kotlin/
+local.properties
+*.keystore
+*.jks
+*.hprof
+*.jsbundle
+.metro-health-check*
+coverage/

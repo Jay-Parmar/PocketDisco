@@ -1,0 +1,97 @@
+name: Mobile checks
+
+on:
+  pull_request:
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/domain/**'
+      - 'tools/mobile_e2e/**'
+      - '.github/workflows/mobile.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  client:
+    name: Mobile client
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.21.0'
+          cache: npm
+          cache-dependency-path: |
+            apps/mobile/package-lock.json
+            packages/domain/package-lock.json
+      - name: Install domain tools
+        working-directory: packages/domain
+        run: npm ci
+      - name: Test domain
+        working-directory: packages/domain
+        run: npm test && npm run typecheck
+      - name: Install mobile tools
+        working-directory: apps/mobile
+        run: npm ci
+      - name: Test mobile client
+        working-directory: apps/mobile
+        run: npm test -- --runInBand && npm run typecheck && npm run lint
+      - name: Test device harness
+        run: python3 -m unittest discover -s tools/mobile_e2e -v
+
+  android:
+    name: Android builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ANDROID_HOME: ${{ github.workspace }}/.local-tools/android-sdk
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/.local-tools/android-sdk
+      GRADLE_USER_HOME: ${{ github.workspace }}/.local-tools/gradle
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.21.0'
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install pinned Android command-line tools
+        run: |
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          curl --fail --location --retry 3 https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip -o .local-tools/android-tools.zip
+          echo '4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583  .local-tools/android-tools.zip' | sha256sum --check
+          unzip -q .local-tools/android-tools.zip -d "$ANDROID_HOME/cmdline-tools"
+          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          set +o pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          set -o pipefail
+      - name: Install Android packages
+        run: sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' 'ndk;27.1.12297006' 'cmake;3.22.1'
+      - name: Install mobile tools
+        working-directory: apps/mobile
+        run: npm ci
+      - name: Test and build Android
+        working-directory: apps/mobile/android
+        run: bash gradlew testDebugUnitTest lintInternal lintRelease assembleInternal assembleRelease --max-workers=2 --console=plain
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: pocketdisco-internal-apk
+          path: apps/mobile/android/app/build/outputs/apk/internal/app-internal.apk
+          if-no-files-found: error
+          retention-days: 5

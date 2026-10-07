@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pocketdisco-api"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi==0.142.2",
+  "anyio==4.15.1",
+  "starlette==1.7.0",
+  "uvicorn[standard]==0.54.0",
+  "sqlalchemy[asyncio]==2.0.54",
+  "greenlet==3.2.4; sys_platform == 'win32'",
+  "asyncpg==0.32.0",
+  "redis==6.4.0",
+  "alembic==1.20.0",
+  "pydantic==2.13.5",
+  "pydantic-settings==2.15.0",
+]
+
+[project.optional-dependencies]
+test = ["aiosqlite==0.22.1", "httpx==0.28.1", "pytest==9.1.1", "pytest-asyncio==1.4.0", "ruff==0.16.10"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = ["integration: needs PostgreSQL and Redis"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
