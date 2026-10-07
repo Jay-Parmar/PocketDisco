@@ -36,7 +36,7 @@ PocketDisco/
     ui/                     # only genuinely portable UI primitives
   infra/
     compose/                # local PostgreSQL + Redis
-    deploy/                 # deployment definitions, later
+    self-hosted/            # isolated private backend services
   docs/
 ```
 

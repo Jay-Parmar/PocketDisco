@@ -6,44 +6,75 @@ The owner has authorized SSH deployment to their existing server instead of
 Render, AWS, or another hosting provider. Retain FastAPI, PostgreSQL, and Redis;
 the Valkey proposal below is not adopted. No hosting purchase is required.
 
-The first connectivity check reached no SSH authentication prompt. The local
-Tailscale client is online, but the target is reported offline; TCP port 22 and
-two Tailscale probes timed out. No remote files, services, firewall rules, or
-databases were changed. Credentials are not saved in this repository.
+## Private deployment checkpoint: 2026-10-08
 
-The owner confirmed that the server's internet connection is down. Deployment
-is paused until connectivity returns. No remote installation has started.
+SSH access returned after the owner's internet outage. Runtime commit
+`6a63a4bdf45cba53d4fb399246d8f497af531c3c` is installed on the Ubuntu 24.04 host.
+The [native deployment runbook](../infra/self-hosted/README.md) records the setup.
 
-Local preparation hides input values from formatted settings-validation errors
-so a bad connection URL does not print its credentials during startup. Three
-regression cases failed before the fix and pass afterward. The local API suite
-passes 62 tests; eight PostgreSQL/Redis integration tests are skipped locally.
-Lint and formatting checks pass. This is not deployment or remote-test evidence.
+| Service | Loopback port | Isolation |
+|---|---|---|
+| FastAPI | 18080 | Dedicated runtime user and read-only release |
+| PostgreSQL 16.15 | 55432 | Separate cluster, data directory and database roles |
+| Redis 7.4.11 | 56379 | Separate process, restricted ACL and no eviction |
 
-Before deployment:
+The host already had PostgreSQL 16 binaries. Reusing them for a separate cluster
+avoids replacing or restarting its existing database. CI now covers PostgreSQL
+16 and 17. Redis was built from checksum-verified source. No host packages,
+firewall rules, Tailscale routes, or existing application configs were changed.
+Existing backend and database process IDs remained unchanged. No reboot occurred.
 
-1. Restore SSH reachability and inspect the host OS, capacity, occupied ports,
-   service manager, container runtime, and existing applications.
-2. Isolate PocketDisco's processes, secrets, databases, and persistent storage.
-   Do not replace another application's proxy configuration or shared services.
-3. Configure HTTPS/WSS ingress and trust only the actual reverse proxy for
-   client IPs. Preserve disabled access logs and the existing request/socket
-   limits. Expose neither PostgreSQL nor Redis to the public internet.
-4. Apply reviewed migrations, configure restart supervision, and verify health,
-   room/chat/reconnect flows, and a backup restore before public use.
+All three PocketDisco units are enabled for boot and supervised by systemd.
+Their connection, memory, CPU and shutdown limits are explicit. Credentials
+were generated on the server in root-only environment files, not saved in Git.
+Runtime and migration processes have separate OS and database identities.
+Permission checks confirmed that the API cannot read migration credentials,
+database files, or backups, and cannot create schemas, temporary tables or roles.
 
-The local deployment audit also identified these pending checks:
+Verified:
 
-- Set database connection budgets, connection/query/lock timeouts, Redis pool
-  limits, and application concurrency limits after inspecting server capacity.
-- Set proxy header/body timeouts and connection limits. The application's byte
-  limits do not bound how long a client can take to send a request body.
-- Check the expected Alembic revision before startup. The current health check
-  confirms store connectivity, not that every migration has been applied.
-- Bound graceful shutdown and close each datastore even if the other close
-  fails. Test restart recovery with connected clients.
-- Restrict tester access for a private beta. Private rooms alone do not restrict
-  the guest-registration endpoint.
+- [API CI](https://github.com/Jay-Parmar/PocketDisco/actions/runs/37667228118):
+  116 tests pass in each Python/PostgreSQL matrix job, including real Redis.
+  Local Windows: 108 pass, eight integration tests skipped.
+- [Deployment-tools CI](https://github.com/Jay-Parmar/PocketDisco/actions/runs/37667228146):
+  installer, smoke, backup and device-harness tests pass. All 17 installer tests
+  also pass as root on the actual server, including release-symlink checks.
+- Migration `0001_private_rooms` and Alembic schema check pass.
+- Nine [remote room-control checks](../tools/remote_api_smoke/README.md) pass
+  through an encrypted SSH tunnel: health, guests, join, presence, readiness,
+  chat, reconnect, single-use tickets and leave.
+- Restarting only the API preserved authentication, room state and committed
+  chat. A new socket restored the snapshot and accepted another chat message.
+- A [backup restore drill](../tools/postgres_backup/README.md) restored a custom
+  dump into a fresh scratch database, verified the revision and table readability,
+  then removed that scratch database. The root-only archive remains on the host.
+  This does not verify off-site recovery or ownership/ACL reconstruction.
+
+The remote device UI run passed cold launch on both devices and room creation
+on the physical phone. Emulator joining did not complete. A crash dialog from
+another app blocked its UI; that app was later foreground on the physical phone
+too. The device run is incomplete, not an end-to-end pass. No other app was
+stopped, reset or modified. Resume after those devices are available exclusively.
+
+Sanitized reports are under `.local-tools/remote-api-smoke/`,
+`.local-tools/remote-api-restart.json` and `.local-tools/mobile-e2e-server/`.
+Screenshots may contain synthetic invites and are not committed.
+
+## Before public access
+
+1. Confirm the public router can reach the Linux server. The development PC and
+   server currently use different LAN subnets; forwarding to the wrong one will
+   not expose this backend. Do not install an unapproved relay on the PC.
+2. Select an owned API hostname and configure DNS and HTTPS/WSS ingress. Normal
+   direct ingress uses TCP 443, with TCP 80 for HTTP certificate validation.
+   Never forward SSH, either datastore, or the internal API port.
+3. Set proxy body/header timeouts, connection limits and token-safe logs. Trust
+   only the actual proxy peer. The API currently trusts no forwarded headers.
+4. Restrict beta access before opening guest registration. Add measured load
+   tests, monitored backups, encrypted off-host storage, retention and recovery.
+5. Coordinate the host's reported pending security updates and required restart
+   with its owner. They were not applied during this isolated deployment.
+6. Complete the remaining mobile, playback, privacy and Play release gates.
 
 The hostname currently resolves to a Tailscale address. That address can be
 stable without being public. [Tailscale documents this distinction](https://tailscale.com/docs/concepts/tailscale-ip-addresses).
@@ -85,7 +116,7 @@ Do not use free database or sleeping web-service tiers for production. Render
 [point-in-time recovery](https://render.com/docs/postgresql-backups), with a
 three-day recovery window on Hobby. Test a restore before launch.
 
-## Explicit compatibility gate
+### Explicit compatibility gate
 
 New Render Key Value instances run
 [Valkey 8](https://render.com/docs/key-value), not Redis 7.4. Our integration CI
@@ -95,7 +126,7 @@ instance. Configure no eviction for control-state keys and size connection
 pools within provider limits. This is a proposed provider choice, not a silent
 change to the architecture decision.
 
-## Domains and media
+### Domains and media
 
 Use the assigned `onrender.com` HTTPS address for the first remote test. A
 domain purchase is not needed to start. Later attach `api.<owner-domain>` and
@@ -107,7 +138,7 @@ Bundle the small reviewed test catalog for the first playback build. Each
 phone reads its own copy. The API carries room commands and chat, not audio.
 A separate media origin/CDN can be considered when catalog size requires it.
 
-## Work after approval
+### Work after approval
 
 1. Add a deployment branch with a container, Render configuration, production
    bind/port settings, migration step, health checks, and rollback instructions.

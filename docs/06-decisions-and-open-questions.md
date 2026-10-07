@@ -11,6 +11,7 @@
 | FastAPI modular monolith | Familiar stack and adequate for MVP; easier correctness than early services |
 | PostgreSQL + Redis | Durable product data plus low-latency expiring room state/fan-out |
 | Owner-managed backend host | The owner selected their existing server instead of a paid hosting provider; deployment requires verified access and HTTPS ingress |
+| Isolated native services on the selected host | Reuse installed PostgreSQL 16 binaries for a separate cluster, with dedicated Redis 7.4 and API processes; leave the existing applications unchanged and test PostgreSQL 16 alongside 17 |
 | Provider-neutral playback interface | Provider capability and permission vary; Windows can add another implementation |
 | Owned/licensed audio proves sync | Removes provider jitter/policy from the core technical experiment |
 | Private rooms before discovery | Avoids premature moderation, spam, and child-safety scope |
