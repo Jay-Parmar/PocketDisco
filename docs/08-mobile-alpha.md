@@ -14,8 +14,9 @@ presence, rate limits, and fan-out. A local test mode must be explicit and must
 not be confused with a deployable service.
 
 Next deliverable: Kotlin playback behind a provider-neutral contract, generated
-demo audio, native clock estimation, scheduled starts, pause, seek, late join,
-and reconnect. Demo sound is not a launch music catalog. No YouTube extraction,
+demo audio and the separately reviewed CC0 test catalog, native clock estimation,
+scheduled starts, pause, seek, late join, and reconnect. Test tracks are not an
+approved launch catalog. No YouTube extraction,
 Spotify integration, public rooms, uploads, or desktop features are included.
 
 ## Private-room wire contract

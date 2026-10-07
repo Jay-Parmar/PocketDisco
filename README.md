@@ -17,6 +17,8 @@ Build the room and synchronization engine first with audio that you own or are l
 - [Decisions and open questions](docs/06-decisions-and-open-questions.md)
 - [Research sources](docs/07-sources.md)
 - [Mobile alpha scope and wire contract](docs/08-mobile-alpha.md)
+- [Test audio catalog and license review](docs/09-test-audio-catalog.md)
+- [Android delivery checkpoint](docs/10-mobile-checkpoint.md)
 
 ## Proposed eventual repository shape
 
