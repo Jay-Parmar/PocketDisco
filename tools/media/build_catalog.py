@@ -185,6 +185,20 @@ def verify_files(catalog: dict, directory: Path, sources: dict) -> None:
         require_faststart(path)
 
 
+def check_decode(ffmpeg: Path, path: Path, duration_ms: int, seek: bool) -> None:
+    args = [str(ffmpeg), "-nostdin", "-v", "error", "-xerror", "-progress", "pipe:1", "-nostats"]
+    if seek:
+        args.extend(["-ss", str(Decimal(duration_ms) / 2000)])
+    args.extend(["-i", str(path)])
+    if seek:
+        args.extend(["-t", "1"])
+    args.extend(["-f", "null", "-"])
+    times = [int(line.split("=", 1)[1]) for line in run(args).splitlines() if line.startswith("out_time_us=")]
+    minimum_us = 900_000 if seek else duration_ms * 1000 - 100_000
+    if not times or times[-1] < minimum_us:
+        raise ValueError(f"Decode produced too little audio: {path.name}")
+
+
 def build(sources: dict, source_dir: Path, output_dir: Path, tool_dir: Path) -> dict:
     ffmpeg, ffprobe = tools_at(tool_dir, sources["toolchain"])
     if (output_dir / "catalog.json").exists():
@@ -222,10 +236,8 @@ def verify(catalog_path: Path, tool_dir: Path | None) -> None:
             measured = probe(ffprobe, path)
             if any(track[key] != value for key, value in measured.items()):
                 raise ValueError(f"Probe mismatch: {track['id']}")
-            run([str(ffmpeg), "-nostdin", "-v", "error", "-xerror", "-i", str(path), "-f", "null", "-"])
-            midpoint = str(Decimal(track["duration_ms"]) / 2000)
-            run([str(ffmpeg), "-nostdin", "-v", "error", "-xerror", "-ss", midpoint,
-                 "-i", str(path), "-t", "1", "-f", "null", "-"])
+            check_decode(ffmpeg, path, track["duration_ms"], seek=False)
+            check_decode(ffmpeg, path, track["duration_ms"], seek=True)
     print(f"Verified {len(catalog['tracks'])} catalog tracks")
 
 

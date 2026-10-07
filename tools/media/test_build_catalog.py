@@ -18,6 +18,11 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(len({track["id"] for track in self.sources["tracks"]}), 3)
         self.assertTrue(all(track["license"] == "CC0-1.0" for track in self.sources["tracks"]))
 
+    def test_committed_catalog_matches_audio_and_source_provenance(self):
+        directory = media.ROOT / "assets/test-audio"
+        catalog = json.loads((directory / "catalog.json").read_text(encoding="utf-8"))
+        media.verify_files(catalog, directory, self.sources)
+
     def test_unreviewed_license_is_rejected(self):
         self.sources["tracks"][0]["license"] = "unknown"
         with patch.object(Path, "read_text", return_value=json.dumps(self.sources)):
@@ -100,6 +105,19 @@ class CatalogTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Unexpected binary hash"):
                     media.tools_at(Path("tools"), self.sources["toolchain"])
                 run.assert_not_called()
+
+    def test_successful_process_exit_does_not_hide_empty_seek_output(self):
+        for output in ["", "out_time_us=0\nprogress=end\n", "out_time_us=800000\n"]:
+            with patch.object(media, "run", return_value=output):
+                with self.assertRaisesRegex(ValueError, "too little audio"):
+                    media.check_decode(Path("ffmpeg"), Path("audio.m4a"), 2000, seek=True)
+        with patch.object(media, "run", return_value="out_time_us=1000000\n"):
+            media.check_decode(Path("ffmpeg"), Path("audio.m4a"), 2000, seek=True)
+
+    def test_full_decode_checks_the_expected_presentation_duration(self):
+        with patch.object(media, "run", return_value="out_time_us=1000000\n"):
+            with self.assertRaisesRegex(ValueError, "too little audio"):
+                media.check_decode(Path("ffmpeg"), Path("audio.m4a"), 3000, seek=False)
 
 
 if __name__ == "__main__":
