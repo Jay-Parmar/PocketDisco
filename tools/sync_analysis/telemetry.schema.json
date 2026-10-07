@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pocketdisco.invalid/schemas/sync-telemetry-v1.json",
+  "title": "PocketDisco sync telemetry observation",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "event_type",
+    "trial_id",
+    "start_id",
+    "device_id",
+    "provider",
+    "output_category",
+    "outcome"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "event_type": {
+      "enum": ["playback_start", "acoustic_onset"]
+    },
+    "trial_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "start_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "device_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provider": {
+      "type": "string",
+      "minLength": 1
+    },
+    "output_category": {
+      "enum": ["built_in", "wired", "bluetooth"]
+    },
+    "outcome": {
+      "enum": ["ok", "failure"]
+    },
+    "timestamp_ms": {
+      "type": "number",
+      "minimum": 0
+    },
+    "clock_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "failure_reason": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "ok"
+          }
+        },
+        "required": ["outcome"]
+      },
+      "then": {
+        "required": ["timestamp_ms", "clock_id"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "failure"
+          }
+        },
+        "required": ["outcome"]
+      },
+      "then": {
+        "required": ["failure_reason"]
+      }
+    }
+  ]
+}

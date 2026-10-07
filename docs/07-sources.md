@@ -1,6 +1,8 @@
 # Research sources
 
-Checked 2026-08-16. Official/primary documentation was preferred. Legal documents themselves are authoritative; this planning material is not legal advice.
+Baseline checked 2026-08-16. YouTube sources were rechecked 2026-08-25.
+Official and primary documentation was preferred. Legal documents themselves
+are authoritative; this planning material is not legal advice.
 
 ## Spotify
 
@@ -13,6 +15,9 @@ Checked 2026-08-16. Official/primary documentation was preferred. Legal document
 - [Spotify rate limits](https://developer.spotify.com/documentation/web-api/concepts/rate-limits) — rolling-window behavior and 429 responses.
 
 ## YouTube
+
+- [YouTube API Services Developer Policies](https://developers.google.com/youtube/terms/developer-policies): restrictions on copying audiovisual content, separating audio, background playback, and redistribution.
+- [YouTube API Services Terms](https://developers.google.com/youtube/terms/api-services-terms-of-service): rights and restrictions for API clients and audiovisual content.
 
 - [YouTube IFrame Player API](https://developers.google.com/youtube/iframe_api_reference) — play/pause/seek/time, playlist operations, Android WebView integrity, autoplay-blocked event.
 - [YouTube on Android](https://developers.google.com/youtube/android) — IFrame API is the official Android playback route; the older Android Player API is no longer available.

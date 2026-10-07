@@ -38,6 +38,10 @@ PocketDisco/
 
 Only the planning files exist now. Application scaffolding should begin after the Phase 0 policy and two-phone proof-of-concept gates in the build plan.
 
-## First success criterion
+## First success criteria
 
-Two Android phones on ordinary Wi-Fi play the same licensed test file with a measured built-in-speaker skew below 250 ms at the 95th percentile after ten starts, and recover from a disconnect by fetching a fresh room snapshot. This is a product experiment, not a promise of sample-accurate playback.
+Phase 0 timing criterion: two Android phones on ordinary Wi-Fi play the same licensed test file with a measured built-in-speaker skew below 250 ms at the 95th percentile after ten starts.
+
+Early product criterion: after the reconnect-safe room slice exists, a disconnected phone recovers by fetching a fresh room snapshot. Phase 1 adds room snapshot recovery and Phase 2 adds playback reconnect recovery.
+
+These are product experiments, not promises of sample-accurate playback.

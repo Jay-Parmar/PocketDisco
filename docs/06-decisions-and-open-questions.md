@@ -13,6 +13,7 @@
 | Private rooms before discovery | Avoids premature moderation, spam, and child-safety scope |
 | Text before voice | Voice competes for audio focus and raises WebRTC/provider-mixing issues |
 | No Spotify implementation yet | Current policy directly conflicts with the core use case |
+| YouTube trials send controls only | Each visible official player fetches its own media; PocketDisco never handles YouTube media bytes or media URLs |
 | No cross-provider matching in MVP | Matching is unreliable and introduces additional policy conflicts |
 
 ## Product questions to answer through prototypes/interviews
