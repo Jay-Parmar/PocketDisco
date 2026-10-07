@@ -1,0 +1,48 @@
+[Unit]
+Description=PocketDisco private beta API
+Requires=pocketdisco-postgres.service pocketdisco-redis.service
+After=pocketdisco-postgres.service pocketdisco-redis.service
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=pocketdisco
+Group=pocketdisco
+WorkingDirectory=/opt/pocketdisco/current/services/api
+EnvironmentFile=/etc/pocketdisco/api.env
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ExecStart=/opt/pocketdisco/current/.venv/bin/python -m pocketdisco
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=30
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+CapabilityBoundingSet=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectProc=invisible
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET
+LockPersonality=true
+MemoryDenyWriteExecute=true
+IPAddressDeny=any
+IPAddressAllow=localhost
+MemoryMax=512M
+CPUQuota=100%
+TasksMax=64
+LimitNOFILE=4096
+LimitCORE=0
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=100
+
+[Install]
+WantedBy=multi-user.target

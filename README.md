@@ -19,7 +19,7 @@ Build the room and synchronization engine first with audio that you own or are l
 - [Mobile alpha scope and wire contract](docs/08-mobile-alpha.md)
 - [Test audio catalog and license review](docs/09-test-audio-catalog.md)
 - [Android delivery checkpoint](docs/10-mobile-checkpoint.md)
-- [Deployment proposal, awaiting approval](docs/11-deployment-proposal.md)
+- [Backend hosting decision and deployment prerequisites](docs/11-deployment-proposal.md)
 
 ## Proposed eventual repository shape
 
@@ -36,7 +36,7 @@ PocketDisco/
     ui/                     # only genuinely portable UI primitives
   infra/
     compose/                # local PostgreSQL + Redis
-    deploy/                 # deployment definitions, later
+    self-hosted/            # isolated private backend services
   docs/
 ```
 

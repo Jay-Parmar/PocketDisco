@@ -40,6 +40,11 @@ Raw device reports and screenshots stay under `.local-tools/mobile-e2e*/`.
 Screenshots include test invites and are not committed. The test can clear only
 the internal app's scratch session when explicitly given `--reset-test-session`.
 
+The [2026-10-08 backend checkpoint](11-deployment-proposal.md) supersedes the
+deployment status below. The server is deployed privately and remote API tests
+pass. The new device UI run was interrupted by another app using the devices;
+it is not a complete remote phone/emulator result. Public HTTPS remains pending.
+
 ## Resume locally
 
 Use [mobile setup](../apps/mobile/README.md), [API setup](../services/api/README.md),

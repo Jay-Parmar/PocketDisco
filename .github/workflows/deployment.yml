@@ -1,0 +1,45 @@
+name: Backend deployment tools
+
+on:
+  pull_request:
+    paths:
+      - 'services/api/**'
+      - 'infra/self-hosted/**'
+      - 'tools/remote_api_smoke/**'
+      - 'tools/postgres_backup/**'
+      - 'tools/mobile_e2e/**'
+      - '.github/workflows/deployment.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'services/api/**'
+      - 'infra/self-hosted/**'
+      - 'tools/remote_api_smoke/**'
+      - 'tools/postgres_backup/**'
+      - 'tools/mobile_e2e/**'
+      - '.github/workflows/deployment.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  deployment-tools:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: services/api/pyproject.toml
+      - run: python -m pip install -e './services/api[test]'
+      - run: python -m ruff check infra/self-hosted tools/remote_api_smoke tools/postgres_backup tools/mobile_e2e
+      - run: python -m ruff format --check infra/self-hosted tools/remote_api_smoke tools/postgres_backup tools/mobile_e2e
+      - run: mkdir -p .local-tools
+      - run: sudo python3 -m unittest discover -s infra/self-hosted/tests -v
+      - run: python -m unittest discover -s tools/remote_api_smoke -v
+      - run: python -m unittest discover -s tools/postgres_backup -v
+      - run: python -m unittest discover -s tools/mobile_e2e -v

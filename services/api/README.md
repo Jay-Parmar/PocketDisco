@@ -20,7 +20,7 @@ $env:POCKETDISCO_DATABASE_URL = "sqlite+aiosqlite:///$($PWD.Path.Replace('\', '/
 .local-tools/api-venv/Scripts/python -m pocketdisco
 ```
 
-The server binds only to `127.0.0.1:8000`. Use `adb reverse tcp:8000 tcp:8000`
+The default bind is `127.0.0.1:8000`. Use `adb reverse tcp:8000 tcp:8000`
 on each selected device and configure the development app for
 `http://127.0.0.1:8000`. Cleartext transport is only for local debug builds.
 The device needs no incoming Windows firewall rule.
@@ -96,8 +96,23 @@ to local storage. Apply reviewed migrations before starting workers. Put the
 service behind HTTPS/WSS with a body-size limit and request timeout. The
 supplied runner trusts no forwarded IP headers; a deployed proxy needs an
 explicit trusted-proxy configuration before relying on per-client IP limits.
+Set `POCKETDISCO_TRUSTED_PROXY_IPS` only to verified proxy IPs or narrow networks;
+wildcards and default-route networks are rejected. Bind and port can be set with
+`POCKETDISCO_BIND_HOST` and `POCKETDISCO_PORT`. Never publish the raw API port.
 Use deployment-owned secrets, managed backups, and pinned image digests when
 deploying. The Compose configuration is local infrastructure, not a deployment.
+
+The runner uses one worker and caps active requests/sockets at 64. PostgreSQL
+defaults to five pooled connections plus five overflow, three-second acquisition
+and connection deadlines, five-second statements and two-second lock waits.
+Redis caps connections at 96 and disables automatic retries. Startup, health and
+datastore cleanup are bounded; a failed datastore close does not skip the other.
+These are initial safety budgets, not a measured capacity claim.
+
+The owner-managed server uses the [native service setup](../../infra/self-hosted/README.md)
+and a separate loopback API port. See the [deployment checkpoint](../../docs/11-deployment-proposal.md)
+for tested behavior and remaining public-ingress gates. Do not run integration
+fixtures against its restricted application database or Redis prefix.
 
 Real integration tests require `POCKETDISCO_TEST_DATABASE_URL` for a disposable
 database whose name ends in `_test`, plus `POCKETDISCO_TEST_REDIS_URL`.
@@ -114,6 +129,7 @@ come from the real-service CI job.
 ## Not release-ready
 
 This slice has no playback, provider integration, deployed HTTPS endpoint,
-account deletion/export, retention worker, moderation, or production secrets
-management. Those remain release gates. Guest sessions are installation-local;
+account deletion/export, retention worker, or moderation. Its private deployment
+has protected local credentials but no automated rotation or off-site backup.
+Those remain release gates. Guest sessions are installation-local;
 there is no account recovery or account upgrade screen yet.

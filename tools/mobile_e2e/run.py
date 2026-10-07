@@ -9,6 +9,16 @@ from pathlib import Path
 PACKAGE = "com.pocketdisco.internal"
 
 
+def port_number(value):
+    try:
+        port = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("Use a port between 1 and 65535") from None
+    if not 1 <= port <= 65535:
+        raise argparse.ArgumentTypeError("Use a port between 1 and 65535")
+    return port
+
+
 def visible(node):
     bounds = list(map(int, re.findall(r"\d+", node.get("bounds", ""))))
     return len(bounds) == 4 and bounds[2] > bounds[0] and bounds[3] > bounds[1]
@@ -18,6 +28,9 @@ class Device:
     def __init__(self, adb, target, label):
         self.adb = [adb, *target]
         self.label = label
+
+    def connect_to_api(self, host_port):
+        self.command("reverse", "tcp:8000", f"tcp:{host_port}")
 
     def command(self, *args):
         result = subprocess.run(
@@ -114,6 +127,7 @@ def main():
     parser.add_argument("--adb", required=True)
     parser.add_argument("--emulator", default="emulator-5554")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--host-port", type=port_number, default=8000)
     parser.add_argument("--reset-test-session", action="store_true")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
@@ -127,6 +141,7 @@ def main():
 
     try:
         for device in (phone, emulator):
+            device.connect_to_api(args.host_port)
             if args.reset_test_session:
                 device.command("shell", "pm", "clear", PACKAGE)
             device.launch()
@@ -183,7 +198,7 @@ def main():
             emulator.launch()
             emulator.wait_for(test_id="resume-room-button", scroll=True)
         finally:
-            emulator.command("reverse", "tcp:8000", "tcp:8000")
+            emulator.connect_to_api(args.host_port)
         emulator.tap("resume-room-button")
         emulator.wait_for(test_id="room-screen")
         emulator.wait_for(text="Connected")
@@ -197,7 +212,12 @@ def main():
         results.append({"name": "run", "result": "failed", "error": str(error)})
         raise
     finally:
-        report = {"package": PACKAGE, "audio_tested": False, "checks": results}
+        report = {
+            "package": PACKAGE,
+            "backend_host_port": args.host_port,
+            "audio_tested": False,
+            "checks": results,
+        }
         (args.output / "results.json").write_text(
             json.dumps(report, indent=2) + "\n", encoding="utf-8"
         )
