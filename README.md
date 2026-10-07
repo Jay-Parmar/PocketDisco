@@ -1,6 +1,6 @@
 # PocketDisco
 
-Planning workspace for an Android-first social listening app. A host creates a room, selects a queue, and participants' phones play their own authorized copy of the same item on a shared timeline.
+Android-first social listening app. A host creates a room, selects a queue, and participants' phones play their own authorized copy of the same item on a shared timeline.
 
 ## Recommendation in one paragraph
 
@@ -16,6 +16,7 @@ Build the room and synchronization engine first with audio that you own or are l
 - [Testing, security, and operations](docs/05-testing-security-operations.md)
 - [Decisions and open questions](docs/06-decisions-and-open-questions.md)
 - [Research sources](docs/07-sources.md)
+- [Mobile alpha scope and wire contract](docs/08-mobile-alpha.md)
 
 ## Proposed eventual repository shape
 
@@ -36,7 +37,10 @@ PocketDisco/
   docs/
 ```
 
-Only the planning files exist now. Application scaffolding should begin after the Phase 0 policy and two-phone proof-of-concept gates in the build plan.
+Product development is authorized as of 2026-10-07. The Android private-room
+alpha is in progress; desktop work is paused. Phase 0 acoustic and media-rights
+gates remain required before release. Prototype and emulator results do not
+establish audible synchronization or Play Store readiness.
 
 ## First success criterion
 
