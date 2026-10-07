@@ -1,6 +1,5 @@
 import uvicorn
 
-
 if __name__ == "__main__":
     uvicorn.run(
         "pocketdisco.app:create_app",
@@ -12,4 +11,3 @@ if __name__ == "__main__":
         forwarded_allow_ips="",
         ws_max_size=8192,
     )
-
