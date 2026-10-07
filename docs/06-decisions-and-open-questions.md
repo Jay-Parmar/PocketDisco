@@ -10,6 +10,7 @@
 | React Native UI + Kotlin playback core | Uses current skills without putting precise scheduling on JavaScript timers |
 | FastAPI modular monolith | Familiar stack and adequate for MVP; easier correctness than early services |
 | PostgreSQL + Redis | Durable product data plus low-latency expiring room state/fan-out |
+| Owner-managed backend host | The owner selected their existing server instead of a paid hosting provider; deployment requires verified access and HTTPS ingress |
 | Provider-neutral playback interface | Provider capability and permission vary; Windows can add another implementation |
 | Owned/licensed audio proves sync | Removes provider jitter/policy from the core technical experiment |
 | Private rooms before discovery | Avoids premature moderation, spam, and child-safety scope |

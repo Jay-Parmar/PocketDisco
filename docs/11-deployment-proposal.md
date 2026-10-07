@@ -1,9 +1,39 @@
-# Deployment proposal
+# Backend hosting decision
 
-Checked 2026-10-07. Proposal only, awaiting owner approval. No cloud resources,
-billing accounts, domains, or DNS records have been created or changed.
+## Selected: owner-managed server
 
-## Recommended starting point
+The owner has authorized SSH deployment to their existing server instead of
+Render, AWS, or another hosting provider. Retain FastAPI, PostgreSQL, and Redis;
+the Valkey proposal below is not adopted. No hosting purchase is required.
+
+The first connectivity check reached no SSH authentication prompt. The local
+Tailscale client is online, but the target is reported offline; TCP port 22 and
+two Tailscale probes timed out. No remote files, services, firewall rules, or
+databases were changed. Credentials are not saved in this repository.
+
+Before deployment:
+
+1. Restore SSH reachability and inspect the host OS, capacity, occupied ports,
+   service manager, container runtime, and existing applications.
+2. Isolate PocketDisco's processes, secrets, databases, and persistent storage.
+   Do not replace another application's proxy configuration or shared services.
+3. Configure HTTPS/WSS ingress and trust only the actual reverse proxy for
+   client IPs. Preserve disabled access logs and the existing request/socket
+   limits. Expose neither PostgreSQL nor Redis to the public internet.
+4. Apply reviewed migrations, configure restart supervision, and verify health,
+   room/chat/reconnect flows, and a backup restore before public use.
+
+The hostname currently resolves to a Tailscale address. That address can be
+stable without being public. [Tailscale documents this distinction](https://tailscale.com/docs/concepts/tailscale-ip-addresses).
+The public static address and HTTPS route still need verification; ordinary
+Play users must not need access to the owner's private tailnet.
+
+## Earlier Render proposal, not selected
+
+The following comparison was checked on 2026-10-07 and is retained as background.
+No cloud resources, billing accounts, domains, or DNS records were created.
+
+### Previous suggested baseline
 
 Render, with the API and both datastores in Singapore. This is a starting-region
 choice for an India-first test group, not a measured latency claim. Keep the
@@ -73,6 +103,5 @@ Railway is a reasonable alternative if usage-based billing is preferred. Its
 of resource use, not unlimited hosting. Render is preferred here for a simple
 managed-database baseline with explicit per-service pricing.
 
-Owner approval needed: hosting provider, initial budget, and who owns the
-hosting account. Approval of this proposal is not permission to purchase a
-domain or publish the app.
+The managed-hosting proposal is superseded by the owner's server selection.
+It does not authorize purchases, domain registration, or app publication.
