@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 from typing import Annotated
 from uuid import UUID
@@ -21,6 +23,7 @@ from .rooms import Rooms
 from .schemas import GuestRequest, RefreshRequest, RoomRequest, SessionView, Snapshot, TicketRequest
 
 bearer = HTTPBearer(auto_error=False)
+logger = logging.getLogger(__name__)
 
 
 class ConcurrencyLimit:
@@ -53,20 +56,34 @@ class ConcurrencyLimit:
 
 def create_app(settings: Settings | None = None):
     settings = settings or Settings()
-    database = Database(settings)
-    live = create_live(settings)
+    try:
+        database = Database(settings)
+        live = create_live(settings)
+    except (ValueError, TypeError, SQLAlchemyError):
+        raise RuntimeError("Datastore configuration is invalid") from None
     auth = Auth(database, settings)
     rooms = Rooms(database, live, settings)
+
+    async def start_stores():
+        await database.start()
+        await live.start()
 
     @asynccontextmanager
     async def lifespan(app):
         try:
-            await database.start()
-            await live.start()
+            try:
+                await asyncio.wait_for(start_stores(), settings.startup_seconds)
+            except Exception:
+                raise RuntimeError("Datastore startup failed") from None
             yield
         finally:
-            await live.close()
-            await database.close()
+            results = await asyncio.gather(
+                asyncio.wait_for(live.close(), settings.cleanup_seconds),
+                asyncio.wait_for(database.close(), settings.cleanup_seconds),
+                return_exceptions=True,
+            )
+            if any(isinstance(result, BaseException) for result in results):
+                logger.warning("Datastore shutdown incomplete")
 
     app = FastAPI(title="PocketDisco", version="0.1.0", lifespan=lifespan)
     app.add_middleware(BodyLimit)
@@ -91,6 +108,7 @@ def create_app(settings: Settings | None = None):
 
     @app.exception_handler(RedisError)
     @app.exception_handler(SQLAlchemyError)
+    @app.exception_handler(asyncio.TimeoutError)
     async def store_unavailable(request, error):
         return JSONResponse(
             {"detail": {"code": "service_unavailable", "message": "Please try again shortly."}},
@@ -119,9 +137,12 @@ def create_app(settings: Settings | None = None):
 
     @app.get("/healthz")
     async def health():
-        async with database.transaction() as db:
-            await db.execute(text("SELECT 1"))
-        await live.start()
+        async def check_stores():
+            async with database.transaction() as db:
+                await db.execute(text("SELECT 1"))
+            await live.start()
+
+        await asyncio.wait_for(check_stores(), settings.health_seconds)
         return {"status": "ok", "mode": settings.mode}
 
     @app.post("/v1/auth/guest", response_model=SessionView, status_code=201)

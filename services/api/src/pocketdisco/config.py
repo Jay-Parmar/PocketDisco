@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     trusted_proxy_ips: str = ""
     concurrency_limit: int = Field(default=64, ge=1, le=1024)
     shutdown_seconds: int = Field(default=15, ge=1, le=60)
+    health_seconds: float = Field(default=5, ge=0.1, le=30, allow_inf_nan=False)
+    startup_seconds: float = Field(default=10, ge=0.1, le=60, allow_inf_nan=False)
+    cleanup_seconds: float = Field(default=5, ge=0.1, le=15, allow_inf_nan=False)
     database_pool_size: int = Field(default=5, ge=1, le=32)
     database_max_overflow: int = Field(default=5, ge=0, le=32)
     database_pool_timeout_seconds: float = Field(default=3, ge=0.1, le=30, allow_inf_nan=False)
