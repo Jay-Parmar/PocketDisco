@@ -30,7 +30,7 @@ export function integer(value: unknown): number {
   return value;
 }
 
-function uuid(value: unknown): string {
+export function parseUuid(value: unknown): string {
   const result = text(value, 36);
   if (!uuidPattern.test(result)) throw new ProtocolError();
   return result;
@@ -45,7 +45,7 @@ function member(value: unknown): RoomMember {
   const data = object(value);
   if (data.role !== 'host' && data.role !== 'listener') throw new ProtocolError();
   return {
-    user_id: uuid(data.user_id),
+    user_id: parseUuid(data.user_id),
     display_name: text(data.display_name, 40),
     role: data.role,
     ready: boolean(data.ready),
@@ -56,8 +56,8 @@ function member(value: unknown): RoomMember {
 function message(value: unknown): ChatMessage {
   const data = object(value);
   return {
-    id: uuid(data.id),
-    user_id: uuid(data.user_id),
+    id: parseUuid(data.id),
+    user_id: parseUuid(data.user_id),
     display_name: text(data.display_name, 40),
     body: text(data.body, 1000),
     created_at_ms: integer(data.created_at_ms),
@@ -73,7 +73,7 @@ export function parseSession(value: unknown): Session {
     access_token: text(data.access_token, 8192),
     refresh_token: text(data.refresh_token, 8192),
     expires_in: expires,
-    user: {id: uuid(user.id), display_name: text(user.display_name, 40)},
+    user: {id: parseUuid(user.id), display_name: text(user.display_name, 40)},
   };
 }
 
@@ -86,7 +86,7 @@ export function parseSnapshot(value: unknown): RoomSnapshot {
   }
   const members = data.members.map(member);
   const messages = data.messages.map(message);
-  const host = uuid(data.host_id);
+  const host = parseUuid(data.host_id);
   if (new Set(members.map(item => item.user_id)).size !== members.length
     || new Set(messages.map(item => item.id)).size !== messages.length
     || members.filter(item => item.role === 'host').length !== 1
@@ -94,7 +94,7 @@ export function parseSnapshot(value: unknown): RoomSnapshot {
     throw new ProtocolError();
   }
   return {
-    room_id: uuid(data.room_id),
+    room_id: parseUuid(data.room_id),
     name: text(data.name, 80),
     revision: integer(data.revision),
     provider: data.provider,
@@ -132,12 +132,12 @@ export function parseServerEvent(value: unknown): ServerEvent {
     case 'pong':
       return {v: 1, type: 'pong', server_time_ms: integer(data.server_time_ms)};
     case 'command.ack':
-      return {v: 1, type: 'command.ack', payload: {command_id: uuid(object(data.payload).command_id)}};
+      return {v: 1, type: 'command.ack', payload: {command_id: parseUuid(object(data.payload).command_id)}};
     case 'error': {
       const payload = object(data.payload);
       return {v: 1, type: 'error', payload: {
         code: text(payload.code, 80), message: text(payload.message, 300),
-        ...(payload.command_id === undefined ? {} : {command_id: uuid(payload.command_id)}),
+        ...(payload.command_id === undefined ? {} : {command_id: parseUuid(payload.command_id)}),
       }};
     }
     default:

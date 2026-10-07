@@ -451,3 +451,45 @@ test('a late create response does not open a socket after background disconnect'
   assert.equal(client.getState().connection, 'offline');
   assert.equal(sockets.length, 0);
 });
+
+test('process recovery uses membership rather than an expired invite', async t => {
+  const {client, connect, calls} = setup(t);
+  const restored = await client.resumeRoom(roomId);
+  assert.equal(restored.revision, 3);
+  assert.equal(calls[0].url, `https://example.test/v1/rooms/${roomId}/snapshot`);
+  assert.equal(calls[1].url, 'https://example.test/v1/realtime/tickets');
+  assert.equal(calls.some(call => call.url.endsWith('/join')), false);
+  assert.equal(client.getState().inviteCode, null);
+  connect(3);
+  assert.equal(client.getState().connection, 'connected');
+});
+
+test('process recovery retains a saved invite only for sharing', async t => {
+  const {client, calls} = setup(t);
+  await client.resumeRoom(roomId, '12abcdefghjk');
+  assert.equal(client.getState().inviteCode, '12ABCDEFGHJK');
+  assert.equal(calls.some(call => call.url.includes('12ABCDEFGHJK')), false);
+});
+
+test('saved room identifiers cannot change the REST path', async t => {
+  const {client, calls} = setup(t);
+  await assert.rejects(client.resumeRoom('../other'), {code: 'invalid_room'});
+  await assert.rejects(client.resumeRoom(roomId, 'not-an-invite'), {code: 'invalid_room'});
+  assert.equal(calls.length, 0);
+});
+
+test('recovery rejects a snapshot belonging to a different room', async t => {
+  const {client, sockets} = setup(t, async url => url.endsWith('/snapshot')
+    ? response({...snapshot(), room_id: otherRoomId}) : undefined);
+  await assert.rejects(client.resumeRoom(roomId), {code: 'invalid_response'});
+  assert.equal(client.getState().snapshot, null);
+  assert.equal(sockets.length, 0);
+});
+
+test('recovery keeps a removed member out of the room', async t => {
+  const {client, sockets} = setup(t, async url => url.endsWith('/snapshot')
+    ? response({detail: {code: 'not_member', message: 'This membership has ended.'}}, 403) : undefined);
+  await assert.rejects(client.resumeRoom(roomId), {code: 'not_member'});
+  assert.equal(client.getState().snapshot, null);
+  assert.equal(sockets.length, 0);
+});

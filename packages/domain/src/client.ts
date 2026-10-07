@@ -3,7 +3,7 @@ import {defaultTimers, SessionTransport} from './http.ts';
 import type {HttpOptions, TimerApi} from './http.ts';
 import {applySnapshot} from './reducer.ts';
 import type {ClientState, RoomSnapshot, Session} from './types.ts';
-import {integer, object, parseInviteCode, parseServerEvent, parseSnapshot, ProtocolError, text} from './validation.ts';
+import {integer, object, parseInviteCode, parseServerEvent, parseSnapshot, parseUuid, ProtocolError, text} from './validation.ts';
 
 export type RoomSocket = {
   readyState: number;
@@ -137,6 +137,22 @@ export class RoomClient {
     });
   }
 
+  async resumeRoom(roomId: string, inviteCode?: string): Promise<RoomSnapshot> {
+    return this.enterRoom(async () => {
+      let id: string;
+      let code: string | null;
+      try {
+        id = parseUuid(roomId);
+        code = inviteCode === undefined ? null : parseInviteCode(inviteCode);
+      } catch {
+        throw new ClientError('invalid_room', 'The saved room could not be restored. Join with a new invite.');
+      }
+      const snapshot = parseSnapshot(await this.http.request('GET', `/v1/rooms/${id}/snapshot`));
+      if (snapshot.room_id !== id) throw new ProtocolError();
+      return {snapshot, inviteCode: code};
+    });
+  }
+
   async leaveRoom(): Promise<void> {
     return this.action(async () => {
       const room = this.requireRoom();
@@ -189,7 +205,7 @@ export class RoomClient {
     await this.connectSocket(true);
   }
 
-  private async enterRoom(load: () => Promise<{snapshot: RoomSnapshot; inviteCode: string}>): Promise<RoomSnapshot> {
+  private async enterRoom(load: () => Promise<{snapshot: RoomSnapshot; inviteCode: string | null}>): Promise<RoomSnapshot> {
     return this.action(async () => {
       if (this.state.snapshot !== null) throw new ClientError('room_active', 'Leave your current room before joining another.');
       if (this.roomOperationActive) throw new ClientError('request_in_progress', 'Wait for the current room request.');
