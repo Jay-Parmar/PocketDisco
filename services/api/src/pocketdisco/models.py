@@ -71,12 +71,14 @@ class Message(Base):
     __tablename__ = "chat_messages"
     __table_args__ = (
         UniqueConstraint("room_id", "user_id", "command_id", name="uq_message_command"),
-        Index("ix_message_room_time", "room_id", "created_at_ms", "id"),
+        UniqueConstraint("room_id", "room_revision", name="uq_message_revision"),
+        Index("ix_message_room_revision", "room_id", "room_revision"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     room_id: Mapped[str] = mapped_column(ForeignKey("rooms.id"))
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     command_id: Mapped[str] = mapped_column(String(36))
+    room_revision: Mapped[int] = mapped_column(BigInteger)
     body: Mapped[str] = mapped_column(Text)
     created_at_ms: Mapped[int] = mapped_column(BigInteger)

@@ -140,6 +140,14 @@ async def test_snapshot_bounds_chat_to_latest_fifty(room_setup):
     assert "Message 0" not in {message.body for message in result.messages}
 
 
+async def test_messages_with_equal_timestamps_keep_commit_order(room_setup, monkeypatch):
+    rooms, live, host, friend, snapshot, invite = room_setup
+    monkeypatch.setattr("pocketdisco.rooms.now_ms", lambda: 1234)
+    for index in range(12):
+        result = await rooms.chat(host, snapshot.room_id, str(uuid4()), str(index))
+    assert [message.body for message in result.messages] == [str(index) for index in range(12)]
+
+
 async def test_room_capacity_is_atomic(room_setup, database, settings):
     rooms, live, host, friend, snapshot, invite = room_setup
     auth = Auth(database, settings)

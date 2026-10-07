@@ -63,7 +63,7 @@ class Rooms:
                 select(Message, User)
                 .join(User, User.id == Message.user_id)
                 .where(Message.room_id == room.id)
-                .order_by(Message.created_at_ms.desc(), Message.id.desc())
+                .order_by(Message.room_revision.desc())
                 .limit(50)
             )
         ).all()
@@ -216,17 +216,18 @@ class Rooms:
             )
             if existing is None:
                 await self.live.rate_limit(f"chat:{room_id}:{identity.user_id}", 20, 10)
+                room.revision += 1
                 db.add(
                     Message(
                         id=str(uuid4()),
                         room_id=room_id,
                         user_id=identity.user_id,
                         command_id=command_id,
+                        room_revision=room.revision,
                         body=body,
                         created_at_ms=now_ms(),
                     )
                 )
-                room.revision += 1
             snapshot = await self._snapshot(db, room)
         await self.publish(snapshot)
         return snapshot
