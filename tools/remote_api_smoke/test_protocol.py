@@ -14,10 +14,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import httpx
-import run
 import uvicorn
 from pocketdisco.app import create_app
 from pocketdisco.config import Settings
+
+import run
 
 
 @contextmanager
