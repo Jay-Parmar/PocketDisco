@@ -16,6 +16,7 @@ from .database import Database
 from .errors import ApiError, unauthorized
 from .http import BodyLimit
 from .live import create_live
+from .realtime import register_realtime
 from .rooms import Rooms
 from .schemas import GuestRequest, RefreshRequest, RoomRequest, SessionView, Snapshot, TicketRequest
 
@@ -138,4 +139,5 @@ def create_app(settings: Settings | None = None):
         value = await live.issue_ticket({"session_id": user.session_id, "room_id": room_id})
         return {"ticket": value, "expires_in": settings.ticket_seconds}
 
+    register_realtime(app, auth, rooms, live)
     return app
