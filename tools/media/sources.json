@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "catalog_id": "pocketdisco-cc0-test-v1",
+  "status": "controlled_audio_candidate",
+  "license_checked_at": "2026-10-07",
+  "toolchain": {
+    "version": "9.0.2",
+    "build": "Gyan Windows essentials",
+    "official_download_page": "https://ffmpeg.org/download.html",
+    "build_page": "https://www.gyan.dev/ffmpeg/builds/",
+    "archive_url": "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.0.2-essentials_build.7z",
+    "archive_sha256": "4705843ccaaf54257c16ad90f3e952ece33c17df964ecf7bfdbb0f49c7171077",
+    "checksum_url": "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.0.2-essentials_build.7z.sha256",
+    "ffmpeg_sha256": "3256173f3f8bffd7df12227c68adf68025edb1832273a9530688a7bb1ed8edec",
+    "ffprobe_sha256": "f0d36ecbbdd3bcfac3efa078c96c7271c2e68b3810595552ac3b7f17e9a65c52"
+  },
+  "tracks": [
+    {
+      "id": "cc0-electric-v1",
+      "title": "Electric",
+      "artist": "Sudocolon",
+      "source_page": "https://opengameart.org/content/electric-0",
+      "source_url": "https://opengameart.org/sites/default/files/Electric.mp3",
+      "source_file": "electric.mp3",
+      "source_sha256": "0708443fcc4aad2231a12e862312b191d6245c57a698108a5f14444b2f441180",
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "attribution": "Electric by Sudocolon, via OpenGameArt.org, CC0 1.0.",
+      "file": "electric.m4a"
+    },
+    {
+      "id": "cc0-technological-messup-v1",
+      "title": "Technological Messup",
+      "artist": "Centurion_of_war",
+      "source_page": "https://opengameart.org/content/technological-messup",
+      "source_url": "https://opengameart.org/sites/default/files/tecnological_messup_v2_0.ogg",
+      "source_file": "technological-messup.ogg",
+      "source_sha256": "d782c36a82cfdb02772001fb5830a8d4e0e82392dd157fe4410d07d11f01e45e",
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "attribution": "Technological Messup by Centurion_of_war, via OpenGameArt.org, CC0 1.0.",
+      "file": "technological-messup.m4a"
+    },
+    {
+      "id": "cc0-technomania101-v1",
+      "title": "Technomania101",
+      "artist": "Fupi",
+      "source_page": "https://opengameart.org/content/technomania101-2000s-europop-electronic-dance-music",
+      "source_url": "https://opengameart.org/sites/default/files/technomania101.flac",
+      "source_file": "technomania101.flac",
+      "source_sha256": "6d4cbd78b9407accab39811877ccaa771968e890dc1430768c4ef4d413e3fca8",
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "attribution": "Technomania101 by Fupi, via OpenGameArt.org, CC0 1.0.",
+      "file": "technomania101.m4a"
+    }
+  ]
+}

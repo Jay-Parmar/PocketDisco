@@ -1,0 +1,160 @@
+import copy
+import io
+import json
+import struct
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+import build_catalog as media
+
+
+class CatalogTests(unittest.TestCase):
+    def setUp(self):
+        self.sources = media.load_sources()
+
+    def test_three_sources_have_distinct_ids_and_explicit_cc0(self):
+        self.assertEqual(len(self.sources["tracks"]), 3)
+        self.assertEqual(len({track["id"] for track in self.sources["tracks"]}), 3)
+        self.assertTrue(all(track["license"] == "CC0-1.0" for track in self.sources["tracks"]))
+
+    def test_committed_catalog_matches_audio_and_source_provenance(self):
+        directory = media.ROOT / "assets/test-audio"
+        catalog = json.loads((directory / "catalog.json").read_text(encoding="utf-8"))
+        media.verify_files(catalog, directory, self.sources)
+
+    def test_unreviewed_license_is_rejected(self):
+        self.sources["tracks"][0]["license"] = "unknown"
+        with patch.object(Path, "read_text", return_value=json.dumps(self.sources)):
+            with self.assertRaisesRegex(ValueError, "Unreviewed license"):
+                media.load_sources()
+
+    def test_duplicate_ids_and_output_names_are_rejected(self):
+        for field in ["id", "file"]:
+            sources = copy.deepcopy(self.sources)
+            sources["tracks"][1][field] = sources["tracks"][0][field]
+            with patch.object(Path, "read_text", return_value=json.dumps(sources)):
+                with self.assertRaisesRegex(ValueError, "unique"):
+                    media.load_sources()
+
+    def test_source_hash_must_be_a_lowercase_sha256(self):
+        for digest in ["abc", "a" * 63, "g" * 64, "A" * 64]:
+            self.sources["tracks"][0]["source_sha256"] = digest
+            with patch.object(Path, "read_text", return_value=json.dumps(self.sources)):
+                with self.assertRaisesRegex(ValueError, "source hash"):
+                    media.load_sources()
+
+    def test_download_links_require_https_without_credentials(self):
+        for url in ["http://example.com/file.mp3", "https://user:pass@example.com/file.mp3"]:
+            self.sources["tracks"][0]["source_url"] = url
+            with patch.object(Path, "read_text", return_value=json.dumps(self.sources)):
+                with self.assertRaisesRegex(ValueError, "source_url"):
+                    media.load_sources()
+
+    def test_filenames_cannot_escape_the_media_directory(self):
+        for filename in ["../song.m4a", "..\\song.m4a", "C:\\song.m4a", "/song.m4a", "song.m4a:stream", "song.exe"]:
+            with self.assertRaisesRegex(ValueError, "Unsafe media filename"):
+                media.named_file(Path("assets/test-audio"), filename)
+
+    def test_mp4_box_parser_handles_regular_extended_and_last_boxes(self):
+        data = struct.pack(">I4s", 8, b"ftyp")
+        data += struct.pack(">I4sQ", 1, b"moov", 16)
+        data += struct.pack(">I4s", 0, b"mdat") + b"audio"
+        self.assertEqual(media.mp4_boxes(io.BytesIO(data), len(data)), ["ftyp", "moov", "mdat"])
+
+    def test_mp4_box_parser_rejects_truncation_and_bad_lengths(self):
+        for data in [b"short", struct.pack(">I4s", 20, b"ftyp"), struct.pack(">I4s", 4, b"moov"), struct.pack(">I4s", 1, b"mdat")]:
+            with self.assertRaises(ValueError):
+                media.mp4_boxes(io.BytesIO(data), len(data))
+
+    def test_conversion_has_pinned_codec_bitexact_and_no_overwrite_flags(self):
+        args = media.encode_args(Path("ffmpeg.exe"), Path("source.flac"), Path("output.m4a"))
+        self.assertEqual(args[args.index("-c:a") + 1], "aac")
+        self.assertEqual(args[args.index("-profile:a") + 1], "aac_low")
+        self.assertEqual(args[args.index("-ar") + 1], "48000")
+        self.assertEqual(args[args.index("-cpuflags") + 1], "0")
+        self.assertEqual(args.count("-bitexact"), 2)
+        self.assertIn("-n", args)
+        self.assertNotIn("-y", args)
+        self.assertEqual(args[args.index("-movflags") + 1], "+faststart")
+
+    def test_manifest_verification_rejects_provenance_changes(self):
+        catalog = {**self.sources, "encoding": media.ENCODING}
+        catalog["tracks"] = copy.deepcopy(self.sources["tracks"])
+        catalog["tracks"][0]["artist"] = "different author"
+        with self.assertRaisesRegex(ValueError, "provenance"):
+            media.verify_files(catalog, Path("unused"), self.sources)
+
+    def test_existing_outputs_are_not_replaced(self):
+        with patch.object(media, "tools_at", return_value=(Path("ffmpeg"), Path("ffprobe"))):
+            with patch.object(Path, "exists", return_value=True):
+                with self.assertRaisesRegex(ValueError, "fresh output directory"):
+                    media.build(self.sources, Path("sources"), Path("output"), Path("tools"))
+
+    def test_source_mismatch_stops_before_encoding(self):
+        with patch.object(media, "tools_at", return_value=(Path("ffmpeg"), Path("ffprobe"))):
+            with patch.object(media, "sha256", return_value="0" * 64):
+                with patch.object(media, "run") as run:
+                    with self.assertRaisesRegex(ValueError, "Source hash mismatch"):
+                        media.build(self.sources, Path("sources"), Path("missing-output"), Path("tools"))
+                    run.assert_not_called()
+
+    def test_unverified_tool_binary_is_not_executed(self):
+        with patch.object(media, "sha256", return_value="0" * 64):
+            with patch.object(media, "run") as run:
+                with self.assertRaisesRegex(ValueError, "Unexpected binary hash"):
+                    media.tools_at(Path("tools"), self.sources["toolchain"])
+                run.assert_not_called()
+
+    def test_successful_process_exit_does_not_hide_empty_seek_output(self):
+        for output in ["", "out_time_us=0\nprogress=end\n", "out_time_us=800000\n"]:
+            with patch.object(media, "run", return_value=output):
+                with self.assertRaisesRegex(ValueError, "too little audio"):
+                    media.check_decode(Path("ffmpeg"), Path("audio.m4a"), 2000, seek=True)
+        with patch.object(media, "run", return_value="out_time_us=1000000\n"):
+            media.check_decode(Path("ffmpeg"), Path("audio.m4a"), 2000, seek=True)
+
+    def test_full_decode_checks_the_expected_presentation_duration(self):
+        with patch.object(media, "run", return_value="out_time_us=1000000\n"):
+            with self.assertRaisesRegex(ValueError, "too little audio"):
+                media.check_decode(Path("ffmpeg"), Path("audio.m4a"), 3000, seek=False)
+
+    def test_system_tools_must_include_both_executables(self):
+        with patch.object(media.shutil, "which", side_effect=["/usr/bin/ffmpeg", "/usr/bin/ffprobe"]):
+            self.assertEqual(media.system_tools(), (Path("/usr/bin/ffmpeg"), Path("/usr/bin/ffprobe")))
+        with patch.object(media.shutil, "which", side_effect=["/usr/bin/ffmpeg", None]):
+            with self.assertRaisesRegex(ValueError, "Install ffprobe"):
+                media.system_tools()
+
+    def test_verification_tool_modes_are_mutually_exclusive(self):
+        with self.assertRaisesRegex(ValueError, "either pinned or system"):
+            media.verify(Path("unused"), Path("tools"), use_system_ffmpeg=True)
+
+    def test_system_verification_checks_hashes_before_running_tools(self):
+        catalog = json.loads((media.ROOT / "assets/test-audio/catalog.json").read_text(encoding="utf-8"))
+        catalog["tracks"][0]["sha256"] = "0" * 64
+        with patch.object(media, "load_sources", return_value=self.sources):
+            with patch.object(Path, "read_text", return_value=json.dumps(catalog)):
+                with patch.object(media, "system_tools") as tools:
+                    with self.assertRaisesRegex(ValueError, "hash or size mismatch"):
+                        media.verify(media.ROOT / "assets/test-audio/catalog.json", None, use_system_ffmpeg=True)
+                    tools.assert_not_called()
+
+    def test_system_verification_probes_and_decodes_without_encoding(self):
+        catalog_path = media.ROOT / "assets/test-audio/catalog.json"
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+        measurements = [{key: track[key] for key in ["duration_ms", "duration_samples", "size_bytes", "sha256"]}
+                        for track in catalog["tracks"]]
+        with patch.object(media, "system_tools", return_value=(Path("ffmpeg"), Path("ffprobe"))):
+            with patch.object(media, "probe", side_effect=measurements):
+                with patch.object(media, "check_decode") as decode:
+                    with patch.object(media, "run", return_value="ffmpeg version test\n"):
+                        with patch.object(media, "tools_at") as pinned:
+                            media.verify(catalog_path, None, use_system_ffmpeg=True)
+                            pinned.assert_not_called()
+                            self.assertEqual(decode.call_count, 6)
+                            self.assertEqual([call.kwargs["seek"] for call in decode.call_args_list], [False, True] * 3)
+
+
+if __name__ == "__main__":
+    unittest.main()
