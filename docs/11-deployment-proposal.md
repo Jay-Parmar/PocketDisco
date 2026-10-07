@@ -32,6 +32,19 @@ Before deployment:
 4. Apply reviewed migrations, configure restart supervision, and verify health,
    room/chat/reconnect flows, and a backup restore before public use.
 
+The local deployment audit also identified these pending checks:
+
+- Set database connection budgets, connection/query/lock timeouts, Redis pool
+  limits, and application concurrency limits after inspecting server capacity.
+- Set proxy header/body timeouts and connection limits. The application's byte
+  limits do not bound how long a client can take to send a request body.
+- Check the expected Alembic revision before startup. The current health check
+  confirms store connectivity, not that every migration has been applied.
+- Bound graceful shutdown and close each datastore even if the other close
+  fails. Test restart recovery with connected clients.
+- Restrict tester access for a private beta. Private rooms alone do not restrict
+  the guest-registration endpoint.
+
 The hostname currently resolves to a Tailscale address. That address can be
 stable without being public. [Tailscale documents this distinction](https://tailscale.com/docs/concepts/tailscale-ip-addresses).
 The public static address and HTTPS route still need verification; ordinary
