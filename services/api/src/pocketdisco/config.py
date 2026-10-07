@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     trusted_proxy_ips: str = ""
     concurrency_limit: int = Field(default=64, ge=1, le=1024)
     shutdown_seconds: int = Field(default=15, ge=1, le=60)
+    database_pool_size: int = Field(default=5, ge=1, le=32)
+    database_max_overflow: int = Field(default=5, ge=0, le=32)
+    database_pool_timeout_seconds: float = Field(default=3, ge=0.1, le=30, allow_inf_nan=False)
+    database_connect_seconds: float = Field(default=3, ge=0.1, le=30, allow_inf_nan=False)
+    database_statement_seconds: int = Field(default=5, ge=1, le=30)
+    database_lock_seconds: int = Field(default=2, ge=1, le=10)
+    redis_max_connections: int = Field(default=96, ge=8, le=2048)
     access_seconds: int = Field(default=900, ge=60, le=3600)
     refresh_seconds: int = Field(default=2592000, ge=3600, le=2592000)
     ticket_seconds: int = Field(default=60, ge=5, le=60)

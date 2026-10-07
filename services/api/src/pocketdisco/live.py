@@ -5,7 +5,10 @@ import time
 from collections import defaultdict
 from contextlib import asynccontextmanager, suppress
 
-from redis.asyncio import Redis
+from redis.asyncio import ConnectionPool, Redis
+from redis.asyncio.connection import parse_url
+from redis.asyncio.retry import Retry
+from redis.backoff import NoBackoff
 from redis.exceptions import RedisError
 
 from .auth import token_hash
@@ -126,9 +129,16 @@ class MemoryLive:
 class RedisLive:
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.redis = Redis.from_url(
-            settings.redis_url, decode_responses=True, socket_connect_timeout=3, socket_timeout=5
+        options = parse_url(settings.redis_url)
+        options.update(
+            decode_responses=True,
+            socket_connect_timeout=3,
+            socket_timeout=5,
+            max_connections=settings.redis_max_connections,
+            retry_on_timeout=False,
+            retry=Retry(NoBackoff(), 0),
         )
+        self.redis = Redis.from_pool(ConnectionPool(**options))
 
     def key(self, value):
         return f"{self.settings.redis_prefix}:{value}"
