@@ -5,7 +5,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="POCKETDISCO_", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="POCKETDISCO_", extra="ignore", hide_input_in_errors=True
+    )
 
     mode: Literal["production", "local_test"] = "production"
     database_url: str = ""
