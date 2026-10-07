@@ -1,0 +1,51 @@
+apply plugin: "com.android.application"
+apply plugin: "org.jetbrains.kotlin.android"
+apply plugin: "com.facebook.react"
+
+react {
+    autolinkLibrariesWithApp()
+}
+
+android {
+    ndkVersion rootProject.ext.ndkVersion
+    buildToolsVersion rootProject.ext.buildToolsVersion
+    compileSdk rootProject.ext.compileSdkVersion
+    namespace "com.pocketdisco"
+
+    defaultConfig {
+        applicationId "com.pocketdisco"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "0.1.0"
+        buildConfigField "String", "API_URL", '"https://api.invalid"'
+        buildConfigField "boolean", "ALLOW_LOCAL_SERVER", "false"
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+            buildConfigField "boolean", "ALLOW_LOCAL_SERVER", "true"
+            buildConfigField "String", "API_URL", '"http://127.0.0.1:8000"'
+            manifestPlaceholders = [usesCleartextTraffic: "true"]
+        }
+        internal {
+            initWith debug
+            applicationIdSuffix ".internal"
+            matchingFallbacks = ["debug"]
+            debuggable false
+            signingConfig signingConfigs.debug
+        }
+        release {
+            minifyEnabled true
+            manifestPlaceholders = [usesCleartextTraffic: "false"]
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+    }
+}
+
+dependencies {
+    implementation("com.facebook.react:react-android")
+    implementation("com.facebook.react:hermes-android")
+    testImplementation("junit:junit:4.13.2")
+}
