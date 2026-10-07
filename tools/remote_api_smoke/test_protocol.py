@@ -10,6 +10,7 @@ import time
 import unittest
 from contextlib import closing, contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -48,6 +49,15 @@ def local_api(directory):
 
 
 class ProtocolTests(unittest.IsolatedAsyncioTestCase):
+    async def test_expired_ticket_rejection_is_not_counted_as_single_use_proof(self):
+        probe = run.Probe(None, "https://api.example.test", run.Report())
+        denial = run.InvalidStatus(SimpleNamespace(status_code=403, reason_phrase="Forbidden"))
+        probe.connect = AsyncMock(side_effect=denial)
+        with patch.object(run, "monotonic", return_value=20):
+            with self.assertRaises(run.SmokeFailure):
+                await probe.reject_spent_ticket(run.Ticket("unused", 19))
+            await probe.reject_spent_ticket(run.Ticket("unused", 21))
+
     async def test_event_attempts_are_bounded(self):
         websocket = AsyncMock()
         websocket.recv.return_value = json.dumps({"v": 1, "type": "pong"})
@@ -151,8 +161,11 @@ class EndToEndTests(unittest.TestCase):
                             connection.execute("SELECT COUNT(*) FROM room_members").fetchone()[0], 0
                         )
                 self.assertGreaterEqual(len(secrets), 8)
-                for secret in secrets:
-                    self.assertNotIn(secret, output.getvalue() + logs.getvalue() + report_text)
+                captured = output.getvalue() + logs.getvalue() + report_text
+                self.assertTrue(
+                    all(secret not in captured for secret in secrets),
+                    "Smoke output exposed a generated credential",
+                )
         finally:
             logger.removeHandler(handler)
             logger.setLevel(previous_level)

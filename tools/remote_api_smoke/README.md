@@ -40,6 +40,8 @@ The nine checks cover health, distinct guest sessions, room create/join,
 two-socket presence, readiness, two-way chat, reconnect snapshot recovery,
 one-use ticket rejection, and leave with lost membership access. Reconnect
 also checks readiness reset and a chat message sent while the guest was away.
+Ticket reuse must be rejected before its expiry; an expired ticket alone is
+not counted as evidence that the ticket was single-use.
 
 Output contains fixed check names and failure categories only. Tokens, ticket
 URLs, invite codes, room IDs, response bodies, and exception details are never

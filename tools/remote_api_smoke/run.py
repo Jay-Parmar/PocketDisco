@@ -7,6 +7,7 @@ import re
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+from time import monotonic
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
@@ -152,6 +153,12 @@ class Guest:
         return {"Authorization": f"Bearer {self.token}"}
 
 
+@dataclass
+class Ticket:
+    value: str = field(repr=False)
+    expires_at: float
+
+
 def member(snapshot, guest):
     return next(item for item in snapshot["members"] if item["user_id"] == guest.user_id)
 
@@ -257,14 +264,16 @@ class Probe:
         return guest
 
     async def ticket(self, guest):
+        started = monotonic()
         data = await self.request("POST", "/v1/realtime/tickets", guest, {"room_id": self.room_id})
-        return credential(data["ticket"])
+        require(type(data["expires_in"]) is int and 0 < data["expires_in"] <= 60)
+        return Ticket(credential(data["ticket"]), started + data["expires_in"])
 
     def connect(self, ticket):
         scheme = "wss" if self.origin.startswith("https:") else "ws"
         origin = scheme + self.origin[self.origin.index(":") :]
         return DirectSocket(
-            f"{origin}/v1/realtime?ticket={ticket}",
+            f"{origin}/v1/realtime?ticket={ticket.value}",
             open_timeout=10,
             close_timeout=2,
             max_size=MAX_RESPONSE,
@@ -280,6 +289,15 @@ class Probe:
         require(hello["type"] == "hello" and hello["payload"]["heartbeat_interval_ms"] == 15000)
         await socket.wait_snapshot(lambda snapshot: True)
         return socket
+
+    async def reject_spent_ticket(self, ticket):
+        try:
+            reused = await self.connect(ticket)
+        except InvalidStatus as error:
+            require(error.response.status_code == 403 and monotonic() < ticket.expires_at)
+        else:
+            self.sockets.append(reused)
+            raise SmokeFailure()
 
     async def exercise(self):
         report = self.report
@@ -326,6 +344,10 @@ class Probe:
             )
         report.passed()
 
+        report.start("single_use_ticket")
+        await self.reject_spent_ticket(used_ticket)
+        report.passed()
+
         report.start("readiness")
         await first.send("member.ready", {"ready": True})
         await second.send("member.ready", {"ready": True})
@@ -368,16 +390,6 @@ class Probe:
         )
         durable = await self.request("GET", f"/v1/rooms/{self.room_id}/snapshot", friend)
         require(has_messages(durable, expected) and durable["revision"] >= recovered["revision"])
-        report.passed()
-
-        report.start("single_use_ticket")
-        try:
-            reused = await self.connect(used_ticket)
-        except InvalidStatus as error:
-            require(error.response.status_code == 403)
-        else:
-            self.sockets.append(reused)
-            raise SmokeFailure()
         report.passed()
 
         report.start("leave")
