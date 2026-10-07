@@ -23,10 +23,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ['3.10', '3.12']
+        include:
+          - python: '3.10'
+            postgres: '17'
+          - python: '3.12'
+            postgres: '17'
+          - python: '3.12'
+            postgres: '16'
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:${{ matrix.postgres }}-alpine
         env:
           POSTGRES_USER: pocketdisco
           POSTGRES_PASSWORD: test-only
