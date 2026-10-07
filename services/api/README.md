@@ -71,6 +71,46 @@ Greenlet is pinned to 3.2.4 on Windows because 3.5.6's native extension was
 rejected by this development PC's application-control policy. No Windows
 security settings were changed.
 
+## PostgreSQL and Redis
+
+On a machine with Docker Compose, set fresh local `POSTGRES_PASSWORD` and
+`REDIS_PASSWORD` environment variables, then run:
+
+```text
+docker compose -f infra/compose/compose.yaml up -d --wait
+```
+
+The databases bind to loopback only. Set `POCKETDISCO_MODE=production`,
+`POCKETDISCO_DATABASE_URL=postgresql+asyncpg://pocketdisco:<password>@127.0.0.1:5432/pocketdisco`,
+and `POCKETDISCO_REDIS_URL=redis://:<password>@127.0.0.1:6379/0`. URL-encode
+passwords in connection URLs. Then, from `services/api`:
+
+```text
+python -m alembic upgrade head
+python -m alembic check
+python -m pocketdisco
+```
+
+Production startup checks both stores and never creates tables or falls back
+to local storage. Apply reviewed migrations before starting workers. Put the
+service behind HTTPS/WSS with a body-size limit and request timeout. The
+supplied runner trusts no forwarded IP headers; a deployed proxy needs an
+explicit trusted-proxy configuration before relying on per-client IP limits.
+Use deployment-owned secrets, managed backups, and pinned image digests when
+deploying. The Compose configuration is local infrastructure, not a deployment.
+
+Real integration tests require `POCKETDISCO_TEST_DATABASE_URL` for a disposable
+database whose name ends in `_test`, plus `POCKETDISCO_TEST_REDIS_URL`.
+Run migrations on that database first. Tests use a random Redis key prefix and
+never flush a Redis database. PostgreSQL test rows remain until the disposable
+database is removed. The API CI job tests concurrent room capacity and chat,
+refresh reuse, Redis tickets/rate limits/presence, and cross-instance sockets.
+It also applies, checks, rolls back, and reapplies migrations.
+
+Docker is not installed on the current development PC, so local green tests
+must not be reported as PostgreSQL/Redis integration evidence. Those results
+come from the real-service CI job.
+
 ## Not release-ready
 
 This slice has no playback, provider integration, deployed HTTPS endpoint,
