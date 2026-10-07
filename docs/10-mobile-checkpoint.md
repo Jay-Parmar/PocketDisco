@@ -67,3 +67,18 @@ The control API never serves or redistributes music.
 
 The next product increment is controlled-audio playback, not YouTube extraction,
 Spotify synchronization, public discovery, voice chat, or desktop work.
+
+## Additional Android compatibility finding
+
+Both tested devices report a 4096-byte memory page size. Each local APK contains
+11 native libraries per 64-bit ABI. Their LOAD segments pass 16 KiB alignment,
+but nine libraries per ABI fail the RELRO-end alignment condition in the current
+[Android guidance](https://developer.android.com/guide/practices/page-sizes#check-relro-security-flag).
+Representative headers were cross-checked with NDK `llvm-readelf`.
+
+This is a static release blocker, not an observed crash on a 16 KiB device.
+It includes prebuilt React Native/Hermes dependencies, so changing only the app's
+linker flags is not sufficient. Resolve compatible native dependencies and test
+on a genuine 16 KiB environment before claiming support or submitting to Play.
+Do not disable RELRO or patch binary headers to bypass the check. Detailed
+scratch evidence is in `.local-tools/elf-alignment/`.

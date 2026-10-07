@@ -53,3 +53,7 @@ not expose Metro or other development tooling to untrusted networks.
 Remaining lint warnings include React Native compatibility settings, template
 resource references, and intentional checked preference commits on a worker
 thread. Internal and release lint currently have no errors.
+
+The [delivery checkpoint](../../docs/10-mobile-checkpoint.md) records a separate
+native RELRO alignment finding. A successful build and ZIP alignment check do
+not establish 16 KiB-device compatibility.
