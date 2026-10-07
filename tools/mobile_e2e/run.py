@@ -177,6 +177,18 @@ def main():
         phone.wait_for(text="Hello from the emulator", scroll=True)
         passed("process restart restores encrypted session and chat")
 
+        emulator.command("shell", "am", "force-stop", PACKAGE)
+        emulator.command("reverse", "--remove", "tcp:8000")
+        try:
+            emulator.launch()
+            emulator.wait_for(test_id="resume-room-button", scroll=True)
+        finally:
+            emulator.command("reverse", "tcp:8000", "tcp:8000")
+        emulator.tap("resume-room-button")
+        emulator.wait_for(test_id="room-screen")
+        emulator.wait_for(text="Connected")
+        passed("offline cold start recovers through saved room retry")
+
         for device in (phone, emulator):
             device.scroll(False)
             device.scroll(False)

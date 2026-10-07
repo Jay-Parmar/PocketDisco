@@ -17,7 +17,9 @@ delete server records or touch other apps. Do not use it on a session you need
 to keep.
 
 The script checks launch, create/join, presence, readiness, two-way chat,
-background recovery, and process restart. It reports only completed checks.
+background recovery, process restart, and saved-room retry after an offline
+cold start. The last check temporarily removes the emulator's port 8000 reverse
+mapping and restores it in a cleanup block. It reports only completed checks.
 It does not measure playback, audio timing, Bluetooth, or real internet quality.
 
 Results and screenshots stay in the ignored output directory. Screenshots can
