@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -10,6 +10,7 @@ import {
 
 import { Brand, Button, ErrorBanner } from './components';
 import { MembersCard } from './MembersCard';
+import { ChatComposer, MessageThread } from './RoomChat';
 import { colors } from './theme';
 import type { ConnectionStatus, RoomDetails } from './types';
 
@@ -42,8 +43,10 @@ export function RoomScreen({
   inviteCode,
   connectionStatus,
   busy = false,
+  isSending = false,
   error,
   onReadyChange,
+  onSendMessage,
   onShareInvite,
   onLeave,
   onRetryConnection,
@@ -52,6 +55,13 @@ export function RoomScreen({
   const connected = connectionStatus === 'connected';
   const you = room.members.find(member => member.user_id === currentUserId);
   const controlsDisabled = busy || !connected || !you;
+  const scroll = useRef<React.ElementRef<typeof ScrollView>>(null);
+  const followMessages = useRef(false);
+
+  function showLatestMessages() {
+    followMessages.current = true;
+    scroll.current?.scrollToEnd({ animated: true });
+  }
 
   return (
     <KeyboardAvoidingView
@@ -60,9 +70,27 @@ export function RoomScreen({
       testID="room-screen"
     >
       <ScrollView
+        ref={scroll}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        scrollEventThrottle={80}
+        onScroll={({ nativeEvent }) => {
+          const { contentOffset, layoutMeasurement, contentSize } = nativeEvent;
+          followMessages.current =
+            contentOffset.y + layoutMeasurement.height >=
+            contentSize.height - 80;
+        }}
+        onContentSizeChange={() => {
+          if (followMessages.current) {
+            scroll.current?.scrollToEnd({ animated: true });
+          }
+        }}
+        onLayout={() => {
+          if (followMessages.current) {
+            scroll.current?.scrollToEnd({ animated: false });
+          }
+        }}
       >
         <View style={styles.content}>
           <View style={styles.topBar}>
@@ -179,8 +207,22 @@ export function RoomScreen({
               hello.
             </Text>
           </View>
+          <MessageThread
+            messages={room.messages}
+            currentUserId={currentUserId}
+          />
         </View>
       </ScrollView>
+      <ChatComposer
+        disabled={controlsDisabled}
+        isSending={isSending}
+        unavailableMessage={
+          !connected ? 'Chat will be available when connected.' : undefined
+        }
+        onSendMessage={onSendMessage}
+        onFocus={showLatestMessages}
+        onSent={showLatestMessages}
+      />
     </KeyboardAvoidingView>
   );
 }
