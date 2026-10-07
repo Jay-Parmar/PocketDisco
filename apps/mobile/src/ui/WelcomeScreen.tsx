@@ -23,11 +23,13 @@ import {
 export type WelcomeScreenProps = {
   serverUrl: string;
   showServerSettings: boolean;
-  busy: 'creating' | 'joining' | null;
+  busy: 'creating' | 'joining' | 'working' | null;
+  canResume?: boolean;
+  onResume?: () => void;
   error?: string | null;
   onCreate: (values: { displayName: string; roomName: string }) => void;
   onJoin: (values: { displayName: string; inviteCode: string }) => void;
-  onSaveServerUrl: (url: string) => void;
+  onSaveServerUrl: (url: string) => boolean | Promise<boolean>;
   onDismissError?: () => void;
 };
 
@@ -35,6 +37,8 @@ export function WelcomeScreen({
   serverUrl,
   showServerSettings,
   busy,
+  canResume = false,
+  onResume,
   error,
   onCreate,
   onJoin,
@@ -50,6 +54,7 @@ export function WelcomeScreen({
   const [serverDraft, setServerDraft] = useState(serverUrl);
   const [serverError, setServerError] = useState<string>();
   const [serverSaved, setServerSaved] = useState(false);
+  const [serverSaving, setServerSaving] = useState(false);
   const secondInput = useRef<React.ElementRef<typeof TextInput>>(null);
 
   useEffect(() => {
@@ -78,13 +83,25 @@ export function WelcomeScreen({
     }
   }
 
-  function saveServer() {
+  async function saveServer() {
+    if (busy || serverSaving) return;
     const nextError = validateServerUrl(serverDraft);
     setServerError(nextError);
     setServerSaved(false);
-    if (!nextError && !busy) {
-      onSaveServerUrl(serverDraft.trim().replace(/\/+$/, ''));
-      setServerSaved(true);
+    if (!nextError) {
+      setServerSaving(true);
+      try {
+        const saved = await onSaveServerUrl(
+          serverDraft.trim().replace(/\/+$/, ''),
+        );
+        setServerSaved(saved);
+        if (!saved)
+          setServerError('Could not save this address. Please try again.');
+      } catch {
+        setServerError('Could not save this address. Please try again.');
+      } finally {
+        setServerSaving(false);
+      }
     }
   }
 
@@ -113,6 +130,17 @@ export function WelcomeScreen({
             </Text>
           </View>
           <RoomArtwork />
+          {canResume && (
+            <View style={styles.resumeCard}>
+              <Text style={styles.serverTitle}>Your room is still saved.</Text>
+              <Button
+                label="Return to your room"
+                onPress={() => onResume?.()}
+                busy={!!busy}
+                testID="resume-room-button"
+              />
+            </View>
+          )}
           <View style={styles.form}>
             <View style={styles.tabs} accessibilityRole="tablist">
               {(['create', 'join'] as const).map(tab => (
@@ -197,6 +225,8 @@ export function WelcomeScreen({
                   ? 'Creating your room...'
                   : busy === 'joining'
                   ? 'Joining your friends...'
+                  : busy === 'working'
+                  ? 'Please wait...'
                   : mode === 'create'
                   ? 'Create my room'
                   : 'Join the room'
@@ -245,7 +275,7 @@ export function WelcomeScreen({
                     keyboardType="url"
                     returnKeyType="done"
                     onSubmitEditing={saveServer}
-                    editable={!busy}
+                    editable={!busy && !serverSaving}
                     error={serverError}
                     testID="server-url-input"
                   />
@@ -254,6 +284,7 @@ export function WelcomeScreen({
                     tone="outline"
                     onPress={saveServer}
                     disabled={!!busy}
+                    busy={serverSaving}
                     testID="save-server-button"
                   />
                   {serverSaved && (
@@ -304,6 +335,7 @@ const styles = StyleSheet.create({
   },
   description: { color: colors.muted, fontSize: 16, lineHeight: 24 },
   form: { gap: 20 },
+  resumeCard: { gap: 12 },
   tabs: {
     flexDirection: 'row',
     gap: 4,

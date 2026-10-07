@@ -14,7 +14,7 @@ async function render(overrides: Partial<WelcomeScreenProps> = {}) {
     busy: null,
     onCreate: jest.fn(),
     onJoin: jest.fn(),
-    onSaveServerUrl: jest.fn(),
+    onSaveServerUrl: jest.fn().mockResolvedValue(true),
     ...overrides,
   };
   await act(async () => {
@@ -127,4 +127,52 @@ test('shows service errors and a dismiss action', async () => {
     .find(node => node.props.accessibilityLabel === 'Dismiss')!;
   await act(async () => dismissButton.props.onPress());
   expect(dismiss).toHaveBeenCalledTimes(1);
+});
+
+test('retries a saved room without asking for its invite again', async () => {
+  const resume = jest.fn();
+  await render({ canResume: true, onResume: resume });
+  await press('resume-room-button');
+  expect(resume).toHaveBeenCalledTimes(1);
+});
+
+test('does not confirm an address before secure storage succeeds', async () => {
+  let finish!: (saved: boolean) => void;
+  await render({
+    onSaveServerUrl: () =>
+      new Promise(resolve => {
+        finish = resolve;
+      }),
+  });
+  await press('server-settings-toggle');
+  await act(async () => {
+    button('save-server-button').props.onPress();
+  });
+  expect(JSON.stringify(screen.toJSON())).not.toContain(
+    'Server address saved.',
+  );
+  expect(button('save-server-button').props.disabled).toBe(true);
+  await act(async () => {
+    finish(false);
+  });
+  expect(JSON.stringify(screen.toJSON())).not.toContain(
+    'Server address saved.',
+  );
+  expect(JSON.stringify(screen.toJSON())).toContain(
+    'Could not save this address.',
+  );
+});
+
+test('shows a rejected address save as a retryable error', async () => {
+  await render({
+    onSaveServerUrl: jest.fn().mockRejectedValue(new Error('storage')),
+  });
+  await press('server-settings-toggle');
+  await press('save-server-button');
+  expect(JSON.stringify(screen.toJSON())).not.toContain(
+    'Server address saved.',
+  );
+  expect(JSON.stringify(screen.toJSON())).toContain(
+    'Could not save this address.',
+  );
 });
