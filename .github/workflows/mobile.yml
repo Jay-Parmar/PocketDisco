@@ -55,6 +55,7 @@ jobs:
     timeout-minutes: 45
     env:
       ANDROID_HOME: ${{ github.workspace }}/.local-tools/android-sdk
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/.local-tools/android-sdk
       GRADLE_USER_HOME: ${{ github.workspace }}/.local-tools/gradle
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
