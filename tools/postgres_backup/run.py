@@ -16,15 +16,19 @@ PG_BIN = Path("/usr/lib/postgresql/16/bin")
 ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"}
 
 
+def peer_identity():
+    import pwd
+
+    account = pwd.getpwnam("pocketdisco-db")
+    return account.pw_uid, account.pw_gid
+
+
 def run_pg(binary, *arguments, **streams):
+    uid, gid = peer_identity()
     options = {"stdout": subprocess.PIPE, "stderr": subprocess.DEVNULL, **streams}
     try:
         result = subprocess.run(
             [
-                "runuser",
-                "-u",
-                "pocketdisco-db",
-                "--",
                 str(PG_BIN / binary),
                 "-h",
                 "/run/pocketdisco-postgres",
@@ -36,6 +40,9 @@ def run_pg(binary, *arguments, **streams):
             env=ENV,
             timeout=120,
             check=False,
+            user=uid,
+            group=gid,
+            extra_groups=[],
             **options,
         )
     except (OSError, subprocess.TimeoutExpired):

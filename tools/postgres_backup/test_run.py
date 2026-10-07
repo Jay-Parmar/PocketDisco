@@ -12,6 +12,11 @@ SPEC.loader.exec_module(backup)
 
 
 class BackupTest(unittest.TestCase):
+    def setUp(self):
+        identity = patch.object(backup, "peer_identity", return_value=(123, 124))
+        identity.start()
+        self.addCleanup(identity.stop)
+
     def test_restore_cleanup_rejects_non_scratch_databases(self):
         for name in (
             "pocketdisco",
@@ -33,7 +38,10 @@ class BackupTest(unittest.TestCase):
         with patch.object(backup.subprocess, "run", return_value=result) as command:
             self.assertEqual(backup.run_pg("psql", "-d", "pocketdisco"), b"ok")
         args = command.call_args.args[0]
-        self.assertEqual(args[:4], ["runuser", "-u", "pocketdisco-db", "--"])
+        self.assertEqual(args[0], str(backup.PG_BIN / "psql"))
+        self.assertEqual(command.call_args.kwargs["user"], 123)
+        self.assertEqual(command.call_args.kwargs["group"], 124)
+        self.assertEqual(command.call_args.kwargs["extra_groups"], [])
         self.assertIn("/run/pocketdisco-postgres", args)
         self.assertIn("55432", args)
         self.assertIn("--no-password", args)
