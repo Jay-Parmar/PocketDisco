@@ -11,6 +11,15 @@ Tailscale client is online, but the target is reported offline; TCP port 22 and
 two Tailscale probes timed out. No remote files, services, firewall rules, or
 databases were changed. Credentials are not saved in this repository.
 
+The owner confirmed that the server's internet connection is down. Deployment
+is paused until connectivity returns. No remote installation has started.
+
+Local preparation hides input values from formatted settings-validation errors
+so a bad connection URL does not print its credentials during startup. Three
+regression cases failed before the fix and pass afterward. The local API suite
+passes 62 tests; eight PostgreSQL/Redis integration tests are skipped locally.
+Lint and formatting checks pass. This is not deployment or remote-test evidence.
+
 Before deployment:
 
 1. Restore SSH reachability and inspect the host OS, capacity, occupied ports,
