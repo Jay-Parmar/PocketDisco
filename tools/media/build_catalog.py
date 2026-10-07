@@ -50,8 +50,9 @@ def load_sources(path: Path = SOURCES) -> dict:
     data = json.loads(path.read_text(encoding="utf-8"))
     if data["schema_version"] != 1 or data["status"] != "controlled_audio_candidate":
         raise ValueError("Unsupported source manifest")
-    if not HASH_PATTERN.fullmatch(data["toolchain"]["archive_sha256"]):
-        raise ValueError("Invalid toolchain hash")
+    for field in ["archive_sha256", "ffmpeg_sha256", "ffprobe_sha256"]:
+        if not HASH_PATTERN.fullmatch(data["toolchain"][field]):
+            raise ValueError("Invalid toolchain hash")
     tracks = data["tracks"]
     if not tracks or len({track["id"] for track in tracks}) != len(tracks):
         raise ValueError("Track IDs must be unique")
@@ -112,17 +113,20 @@ def require_faststart(path: Path) -> None:
 
 
 def run(args: list[str]) -> str:
-    result = subprocess.run(args, capture_output=True, text=True, check=False)
+    result = subprocess.run(args, capture_output=True, text=True, check=False, timeout=300)
     if result.returncode:
         raise ValueError(result.stderr.strip() or "Media tool failed")
     return result.stdout
 
 
-def tools_at(directory: Path, version: str) -> tuple[Path, Path]:
+def tools_at(directory: Path, toolchain: dict) -> tuple[Path, Path]:
     ffmpeg = directory / "ffmpeg.exe"
     ffprobe = directory / "ffprobe.exe"
     for tool in [ffmpeg, ffprobe]:
+        if sha256(tool) != toolchain[f"{tool.stem}_sha256"]:
+            raise ValueError(f"Unexpected binary hash: {tool.name}")
         first_line = run([str(tool), "-version"]).splitlines()[0]
+        version = toolchain["version"]
         if not first_line.startswith(f"{tool.stem} version {version}-essentials_build-www.gyan.dev "):
             raise ValueError(f"Use the pinned Gyan FFmpeg {version} essentials build")
     return ffmpeg, ffprobe
@@ -182,7 +186,7 @@ def verify_files(catalog: dict, directory: Path, sources: dict) -> None:
 
 
 def build(sources: dict, source_dir: Path, output_dir: Path, tool_dir: Path) -> dict:
-    ffmpeg, ffprobe = tools_at(tool_dir, sources["toolchain"]["version"])
+    ffmpeg, ffprobe = tools_at(tool_dir, sources["toolchain"])
     if (output_dir / "catalog.json").exists():
         raise ValueError("Use a fresh output directory; catalog.json already exists")
     inputs = []
@@ -212,7 +216,7 @@ def verify(catalog_path: Path, tool_dir: Path | None) -> None:
     catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
     verify_files(catalog, catalog_path.parent, sources)
     if tool_dir is not None:
-        ffmpeg, ffprobe = tools_at(tool_dir, sources["toolchain"]["version"])
+        ffmpeg, ffprobe = tools_at(tool_dir, sources["toolchain"])
         for track in catalog["tracks"]:
             path = named_file(catalog_path.parent, track["file"])
             measured = probe(ffprobe, path)
@@ -241,7 +245,7 @@ def main() -> None:
             build(load_sources(), args.sources_dir, args.output_dir, args.ffmpeg_dir)
         else:
             verify(args.catalog, args.ffmpeg_dir)
-    except (OSError, ValueError, KeyError, TypeError) as error:
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         parser.exit(1, f"{error}\n")
 
 

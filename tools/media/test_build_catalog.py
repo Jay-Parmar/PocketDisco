@@ -94,6 +94,13 @@ class CatalogTests(unittest.TestCase):
                         media.build(self.sources, Path("sources"), Path("missing-output"), Path("tools"))
                     run.assert_not_called()
 
+    def test_unverified_tool_binary_is_not_executed(self):
+        with patch.object(media, "sha256", return_value="0" * 64):
+            with patch.object(media, "run") as run:
+                with self.assertRaisesRegex(ValueError, "Unexpected binary hash"):
+                    media.tools_at(Path("tools"), self.sources["toolchain"])
+                run.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
