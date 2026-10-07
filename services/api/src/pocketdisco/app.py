@@ -23,6 +23,34 @@ from .schemas import GuestRequest, RefreshRequest, RoomRequest, SessionView, Sna
 bearer = HTTPBearer(auto_error=False)
 
 
+class ConcurrencyLimit:
+    def __init__(self, app, limit):
+        self.app = app
+        self.limit = limit
+        self.active = 0
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] not in {"http", "websocket"}:
+            await self.app(scope, receive, send)
+            return
+        if self.active >= self.limit:
+            if scope["type"] == "websocket":
+                await send({"type": "websocket.close", "code": 1013})
+            else:
+                response = JSONResponse(
+                    {"detail": {"code": "service_unavailable", "message": "Try again shortly."}},
+                    status_code=503,
+                    headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+                )
+                await response(scope, receive, send)
+            return
+        self.active += 1
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            self.active -= 1
+
+
 def create_app(settings: Settings | None = None):
     settings = settings or Settings()
     database = Database(settings)
@@ -140,4 +168,5 @@ def create_app(settings: Settings | None = None):
         return {"ticket": value, "expires_in": settings.ticket_seconds}
 
     register_realtime(app, auth, rooms, live)
+    app.add_middleware(ConcurrencyLimit, limit=settings.concurrency_limit)
     return app
