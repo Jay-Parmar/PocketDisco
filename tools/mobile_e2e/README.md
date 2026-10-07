@@ -10,6 +10,11 @@ From the repository root:
 python tools/mobile_e2e/run.py --adb .local-tools/android-sdk/platform-tools/adb.exe --output .local-tools/mobile-e2e
 ```
 
+For a remote API reached through an SSH tunnel on this PC, pass `--host-port`
+with the tunnel's local port. The harness maps device port 8000 to that port
+and restores the same mapping after its offline check. This verifies the remote
+backend through the tunnel, not public HTTPS or independent mobile networks.
+
 Both devices must start at the welcome screen. For a fresh test session, append
 `--reset-test-session`. That option clears only `com.pocketdisco.internal` app
 data on both devices, including its guest login and saved invite. It does not
