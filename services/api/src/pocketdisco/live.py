@@ -239,11 +239,17 @@ class RedisLive:
         subscription = Subscription()
         async with self.redis.pubsub() as pubsub:
             await pubsub.subscribe(self.key(f"room:{room_id}:events"))
+            confirmation = await pubsub.get_message(ignore_subscribe_messages=False, timeout=5)
+            if confirmation is None or confirmation["type"] != "subscribe":
+                raise RedisError("Room subscription did not become ready")
 
             async def receive():
                 try:
-                    async for message in pubsub.listen():
-                        if message["type"] == "message":
+                    while True:
+                        message = await pubsub.get_message(
+                            ignore_subscribe_messages=True, timeout=1
+                        )
+                        if message and message["type"] == "message":
                             subscription.offer(json.loads(message["data"]))
                 except (RedisError, ValueError):
                     subscription.offer(None)

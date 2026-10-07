@@ -1,0 +1,67 @@
+name: Mobile API
+
+on:
+  pull_request:
+    paths:
+      - 'services/api/**'
+      - 'infra/compose/**'
+      - '.github/workflows/api.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'services/api/**'
+      - 'infra/compose/**'
+      - '.github/workflows/api.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.12']
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: pocketdisco
+          POSTGRES_PASSWORD: test-only
+          POSTGRES_DB: pocketdisco_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd 'pg_isready -U pocketdisco -d pocketdisco_test'
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:7.4-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd 'redis-cli ping'
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    defaults:
+      run:
+        working-directory: services/api
+    env:
+      POCKETDISCO_DATABASE_URL: postgresql+asyncpg://pocketdisco:test-only@127.0.0.1:5432/pocketdisco_test
+      POCKETDISCO_REDIS_URL: redis://127.0.0.1:6379/0
+      POCKETDISCO_TEST_DATABASE_URL: postgresql+asyncpg://pocketdisco:test-only@127.0.0.1:5432/pocketdisco_test
+      POCKETDISCO_TEST_REDIS_URL: redis://127.0.0.1:6379/1
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: services/api/pyproject.toml
+      - run: python -m pip install -e '.[test]'
+      - run: python -m ruff check .
+      - run: python -m ruff format --check .
+      - run: python -m alembic upgrade head
+      - run: python -m alembic check
+      - run: python -m pytest -q -o faulthandler_timeout=30
+      - run: python -m alembic downgrade base
+      - run: python -m alembic upgrade head
+      - run: python -m alembic check
