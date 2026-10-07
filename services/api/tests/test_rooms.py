@@ -1,4 +1,5 @@
 import asyncio
+import time
 from uuid import uuid4
 
 import pytest
@@ -97,6 +98,15 @@ async def test_readiness_requires_connection_and_resets_on_disconnect(room_setup
     result = await rooms.snapshot(host, snapshot.room_id)
     assert not result.members[0].ready
     assert not result.members[0].connected
+
+
+async def test_expired_presence_changes_snapshot_revision(room_setup):
+    rooms, live, host, friend, snapshot, invite = room_setup
+    connected = await rooms.connect(host, snapshot.room_id, "one")
+    live.connections[snapshot.room_id][f"{host.user_id}:one"] = time.monotonic() - 1
+    expired = await rooms.snapshot(host, snapshot.room_id)
+    assert expired.revision > connected.revision
+    assert not expired.members[0].connected
 
 
 async def test_duplicate_chat_is_inserted_once(room_setup, database):

@@ -46,6 +46,7 @@ class Room(Base):
     name: Mapped[str] = mapped_column(String(80))
     host_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     revision: Mapped[int] = mapped_column(BigInteger, default=1)
+    presence_fingerprint: Mapped[str] = mapped_column(String(64), default="")
     closed: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at_ms: Mapped[int] = mapped_column(BigInteger)
 

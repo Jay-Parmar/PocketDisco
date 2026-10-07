@@ -51,6 +51,13 @@ class Rooms:
                 .order_by(Member.joined_at_ms, Member.user_id)
             )
         ).all()
+        member_ids = {user.id for member, user in members}
+        connected &= member_ids
+        ready &= member_ids
+        fingerprint = token_hash(",".join(sorted(connected)) + "/" + ",".join(sorted(ready)))
+        if room.presence_fingerprint and fingerprint != room.presence_fingerprint:
+            room.revision += 1
+        room.presence_fingerprint = fingerprint
         messages = (
             await db.execute(
                 select(Message, User)
@@ -139,6 +146,11 @@ class Rooms:
             await self._member(db, room_id, identity.user_id)
             return await self._snapshot(db, room)
 
+    async def authorize(self, identity: Identity, room_id: str):
+        async with self.database.transaction() as db:
+            await self._room(db, room_id)
+            await self._member(db, room_id, identity.user_id)
+
     async def leave(self, identity: Identity, room_id: str):
         async with self.database.transaction() as db:
             room = await self._room(db, room_id)
@@ -165,7 +177,6 @@ class Rooms:
             room = await self._room(db, room_id)
             await self._member(db, room_id, identity.user_id)
             await self.live.connect(room_id, identity.user_id, connection_id)
-            room.revision += 1
             snapshot = await self._snapshot(db, room)
         await self.publish(snapshot)
         return snapshot
@@ -176,7 +187,6 @@ class Rooms:
             await self.live.disconnect(room_id, identity.user_id, connection_id)
             if room.closed:
                 return
-            room.revision += 1
             snapshot = await self._snapshot(db, room)
         await self.publish(snapshot)
 
@@ -189,7 +199,6 @@ class Rooms:
                 raise ApiError(409, "not_connected", "Reconnect before changing readiness.")
             if (identity.user_id in current) != ready:
                 await self.live.set_ready(room_id, identity.user_id, ready)
-                room.revision += 1
             snapshot = await self._snapshot(db, room)
         await self.publish(snapshot)
         return snapshot
