@@ -119,6 +119,42 @@ class CatalogTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "too little audio"):
                 media.check_decode(Path("ffmpeg"), Path("audio.m4a"), 3000, seek=False)
 
+    def test_system_tools_must_include_both_executables(self):
+        with patch.object(media.shutil, "which", side_effect=["/usr/bin/ffmpeg", "/usr/bin/ffprobe"]):
+            self.assertEqual(media.system_tools(), (Path("/usr/bin/ffmpeg"), Path("/usr/bin/ffprobe")))
+        with patch.object(media.shutil, "which", side_effect=["/usr/bin/ffmpeg", None]):
+            with self.assertRaisesRegex(ValueError, "Install ffprobe"):
+                media.system_tools()
+
+    def test_verification_tool_modes_are_mutually_exclusive(self):
+        with self.assertRaisesRegex(ValueError, "either pinned or system"):
+            media.verify(Path("unused"), Path("tools"), use_system_ffmpeg=True)
+
+    def test_system_verification_checks_hashes_before_running_tools(self):
+        catalog = json.loads((media.ROOT / "assets/test-audio/catalog.json").read_text(encoding="utf-8"))
+        catalog["tracks"][0]["sha256"] = "0" * 64
+        with patch.object(media, "load_sources", return_value=self.sources):
+            with patch.object(Path, "read_text", return_value=json.dumps(catalog)):
+                with patch.object(media, "system_tools") as tools:
+                    with self.assertRaisesRegex(ValueError, "hash or size mismatch"):
+                        media.verify(media.ROOT / "assets/test-audio/catalog.json", None, use_system_ffmpeg=True)
+                    tools.assert_not_called()
+
+    def test_system_verification_probes_and_decodes_without_encoding(self):
+        catalog_path = media.ROOT / "assets/test-audio/catalog.json"
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+        measurements = [{key: track[key] for key in ["duration_ms", "duration_samples", "size_bytes", "sha256"]}
+                        for track in catalog["tracks"]]
+        with patch.object(media, "system_tools", return_value=(Path("ffmpeg"), Path("ffprobe"))):
+            with patch.object(media, "probe", side_effect=measurements):
+                with patch.object(media, "check_decode") as decode:
+                    with patch.object(media, "run", return_value="ffmpeg version test\n"):
+                        with patch.object(media, "tools_at") as pinned:
+                            media.verify(catalog_path, None, use_system_ffmpeg=True)
+                            pinned.assert_not_called()
+                            self.assertEqual(decode.call_count, 6)
+                            self.assertEqual([call.kwargs["seek"] for call in decode.call_args_list], [False, True] * 3)
+
 
 if __name__ == "__main__":
     unittest.main()

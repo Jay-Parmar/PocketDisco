@@ -42,5 +42,16 @@ decodes the full files, and tests a midpoint seek. Compare each rebuilt SHA256
 against `assets/test-audio/catalog.json`. Reproducibility is checked for this
 pinned build; other FFmpeg builds may produce different bytes.
 
+Linux CI uses its installed FFmpeg only to verify committed files:
+
+```sh
+python3 tools/media/build_catalog.py verify --system-ffmpeg
+```
+
+This checks committed hashes before probing and decoding with `ffmpeg` and
+`ffprobe` from `PATH`, and reports their versions. It does not encode audio or
+change the catalog. The `build` command always requires the pinned Windows
+binaries; `--system-ffmpeg` is a verification-only option.
+
 FFmpeg remains local tooling and is not bundled with the app. This script does
 not download, host, proxy, or play any audio.

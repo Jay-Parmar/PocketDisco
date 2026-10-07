@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import re
+import shutil
 import struct
 import subprocess
 from decimal import Decimal, ROUND_HALF_UP
@@ -132,6 +133,16 @@ def tools_at(directory: Path, toolchain: dict) -> tuple[Path, Path]:
     return ffmpeg, ffprobe
 
 
+def system_tools() -> tuple[Path, Path]:
+    paths = []
+    for name in ["ffmpeg", "ffprobe"]:
+        executable = shutil.which(name)
+        if executable is None:
+            raise ValueError(f"Install {name} before using --system-ffmpeg")
+        paths.append(Path(executable))
+    return paths[0], paths[1]
+
+
 def encode_args(ffmpeg: Path, source: Path, destination: Path) -> list[str]:
     return [
         str(ffmpeg), "-nostdin", "-hide_banner", "-loglevel", "error", "-n",
@@ -225,12 +236,17 @@ def build(sources: dict, source_dir: Path, output_dir: Path, tool_dir: Path) -> 
     return catalog
 
 
-def verify(catalog_path: Path, tool_dir: Path | None) -> None:
+def verify(catalog_path: Path, tool_dir: Path | None, use_system_ffmpeg: bool = False) -> None:
+    if tool_dir is not None and use_system_ffmpeg:
+        raise ValueError("Choose either pinned or system verification tools")
     sources = load_sources()
     catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
     verify_files(catalog, catalog_path.parent, sources)
-    if tool_dir is not None:
-        ffmpeg, ffprobe = tools_at(tool_dir, sources["toolchain"])
+    if tool_dir is not None or use_system_ffmpeg:
+        ffmpeg, ffprobe = system_tools() if use_system_ffmpeg else tools_at(tool_dir, sources["toolchain"])
+        if use_system_ffmpeg:
+            for tool in [ffmpeg, ffprobe]:
+                print(run([str(tool), "-version"]).splitlines()[0])
         for track in catalog["tracks"]:
             path = named_file(catalog_path.parent, track["file"])
             measured = probe(ffprobe, path)
@@ -250,13 +266,15 @@ def main() -> None:
     build_command.add_argument("--ffmpeg-dir", type=Path, required=True)
     verify_command = commands.add_parser("verify")
     verify_command.add_argument("--catalog", type=Path, default=ROOT / "assets/test-audio/catalog.json")
-    verify_command.add_argument("--ffmpeg-dir", type=Path)
+    verification_tools = verify_command.add_mutually_exclusive_group()
+    verification_tools.add_argument("--ffmpeg-dir", type=Path)
+    verification_tools.add_argument("--system-ffmpeg", action="store_true")
     args = parser.parse_args()
     try:
         if args.command == "build":
             build(load_sources(), args.sources_dir, args.output_dir, args.ffmpeg_dir)
         else:
-            verify(args.catalog, args.ffmpeg_dir)
+            verify(args.catalog, args.ffmpeg_dir, args.system_ffmpeg)
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         parser.exit(1, f"{error}\n")
 
