@@ -65,7 +65,11 @@ Client socket messages are `{v: 1, type, command_id, payload}`:
 - `ping`: `{client_time_ms: number}`, echoed by `pong` with `server_time_ms`.
 
 Chat command IDs are idempotent per room and sender. Errors are
-`{v: 1, type: 'error', payload: {code, message}}`. REST errors use
+`{v: 1, type: 'error', payload: {code, message, command_id?}}`. Successful
+chat/readiness mutations receive `{v: 1, type: 'command.ack',
+payload: {command_id}}` after commit, including duplicate requests. Chat drafts
+clear only after this acknowledgement; clients do not replay uncertain sends.
+REST errors use
 `{detail: {code, message}}`. Leaving removes membership; if the host leaves,
 the earliest remaining member becomes host. An empty room closes.
 
