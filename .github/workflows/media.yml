@@ -1,0 +1,44 @@
+name: Controlled audio checks
+
+on:
+  pull_request:
+    paths:
+      - 'assets/test-audio/**'
+      - 'tools/media/**'
+      - 'docs/09-test-audio-catalog.md'
+      - '.github/workflows/media.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'assets/test-audio/**'
+      - 'tools/media/**'
+      - 'docs/09-test-audio-catalog.md'
+      - '.github/workflows/media.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: media-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  catalog:
+    name: Catalog and audio integrity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install audio decoders
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ffmpeg
+      - name: Test catalog tools
+        run: python3 -m unittest discover -s tools/media -v
+      - name: Verify hashes, format, decoding, and seeking
+        run: python3 tools/media/build_catalog.py verify --system-ffmpeg
+      - name: Keep committed audio unchanged
+        run: git diff --exit-code -- assets/test-audio
