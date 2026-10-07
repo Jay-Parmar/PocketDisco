@@ -32,12 +32,13 @@ android {
         internal {
             initWith debug
             applicationIdSuffix ".internal"
-            matchingFallbacks = ["debug"]
+            matchingFallbacks = ["release"]
             debuggable false
             signingConfig signingConfigs.debug
         }
         release {
             minifyEnabled true
+            shrinkResources true
             manifestPlaceholders = [usesCleartextTraffic: "false"]
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
