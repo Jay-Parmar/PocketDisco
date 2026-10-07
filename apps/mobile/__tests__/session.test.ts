@@ -18,7 +18,12 @@ test('restores the configured secure server', () => {
       'https://example.com',
       false,
     ),
-  ).toEqual({ baseUrl: 'https://example.com', session, inviteCode: null });
+  ).toEqual({
+    baseUrl: 'https://example.com',
+    session,
+    inviteCode: null,
+    roomId: null,
+  });
 });
 
 test('allows a local server only in internal builds', () => {
@@ -38,6 +43,32 @@ test('does not send a stored session to a changed production server', () => {
       'https://example.com',
       false,
     ),
+  ).toThrow();
+});
+
+test('retains the room and invite needed for recovery', () => {
+  const roomId = '20000000-0000-4000-8000-000000000001';
+  const record = JSON.stringify({
+    baseUrl: 'https://example.com',
+    session,
+    roomId,
+    inviteCode: '0123456789AB',
+  });
+  expect(readSavedSession(record, 'https://example.com', false)).toEqual({
+    baseUrl: 'https://example.com',
+    session,
+    roomId,
+    inviteCode: '0123456789AB',
+  });
+});
+
+test.each([
+  'https://example.com/?key=test',
+  'https://example.com/#room',
+  'file:///rooms',
+])('rejects a saved URL with unsafe origin details %p', baseUrl => {
+  expect(() =>
+    readSavedSession(saved(baseUrl), 'https://example.com', true),
   ).toThrow();
 });
 

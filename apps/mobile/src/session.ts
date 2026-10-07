@@ -7,6 +7,7 @@ import type { Session } from '../../../packages/domain/src/types';
 export type SavedSession = {
   baseUrl: string;
   session: Session;
+  roomId: string | null;
   inviteCode: string | null;
 };
 
@@ -39,6 +40,13 @@ export function readSavedSession(
   return {
     baseUrl: record.baseUrl,
     session: parseSession(record.session),
+    roomId:
+      typeof record.roomId === 'string' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        record.roomId,
+      )
+        ? record.roomId
+        : null,
     inviteCode:
       record.inviteCode === null ? null : parseInviteCode(record.inviteCode),
   };
