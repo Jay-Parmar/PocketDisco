@@ -30,7 +30,9 @@ on their own phone, with an unsynchronized label in the UI.
 Native deadlines use elapsed-realtime milliseconds, not server Unix time.
 Clock estimation and room prepare/ready/commit are not connected yet. Background
 and focus interruptions cancel queued starts; returning does not auto-resume.
-Device playback and measured acoustic behavior still require verification.
+Local playback-state checks now pass on the phone and emulator; see the
+[device checkpoint](10-mobile-checkpoint.md). Measured acoustic behavior,
+shared starts and real focus/headset interruption still need verification.
 
 ## Private-room wire contract
 

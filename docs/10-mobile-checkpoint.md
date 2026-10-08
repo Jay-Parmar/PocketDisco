@@ -38,12 +38,27 @@ Verified locally at code revision `74b5f88`:
 - Audio: 11 tests pass. FFprobe, full decode and midpoint seek decode pass.
   Both APKs contain the reviewed demo bytes and bundled JavaScript.
 
-No shared device was accessed for this increment. Install and inspect the new
-build only after the other test session releases the phone and emulator. Check
-play/pause/seek/replay, natural end, background/lock, focus interruption,
-headphone removal, leaving and rejoining, and the existing room/chat smoke loop.
-JVM fakes and component tests do not establish real decoder or audible behavior.
-The backend deployment was not changed.
+After the owner confirmed a shared-device slot, the new internal APK was installed
+on the Nothing A142 and API 36 emulator. All eight room/chat UI checks pass
+against the deployed backend through an SSH tunnel, including process recovery
+and offline saved-room retry. This is not a public HTTPS or separate-network test.
+
+Both devices also pass seven local playback checks: no autoplay on entry,
+advancing native playhead before pause, paused five-second seeks, natural end,
+replay, background return without resuming, and process restart without autoplay.
+Timed screenshots confirm the playing UI and advancing position; no acoustic
+recording was made. An initial UI-idle polling attempt missed the short playing
+state, so the repeat used timed captures and paused-state observations.
+
+Reports and screenshots remain under `.local-tools/mobile-e2e-playback-20261008/`
+and `.local-tools/mobile-playback-20261008-retry/`; the initial playback report is
+retained separately. After testing, only PocketDisco was stopped, both devices
+were returned to Home, and their original ADB reverse mappings were restored.
+No other app or app data was changed. The backend deployment was not changed.
+
+Lock-screen, real focus/headset interruption, leaving during active audio,
+cross-device start timing and measured audible output remain unverified.
+JVM fakes and component tests do not close these device/acoustic gates.
 
 The [mobile runbook](../apps/mobile/README.md) describes the preview boundaries;
 [generated audio provenance](../tools/demo_audio/README.md) records the asset.

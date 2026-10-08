@@ -50,14 +50,18 @@ Verified:
   then removed that scratch database. The root-only archive remains on the host.
   This does not verify off-site recovery or ownership/ACL reconstruction.
 
-The remote device UI run passed cold launch on both devices and room creation
-on the physical phone. Emulator joining did not complete. A crash dialog from
-another app blocked its UI; that app was later foreground on the physical phone
-too. The device run is incomplete, not an end-to-end pass. No other app was
-stopped, reset or modified. Resume after those devices are available exclusively.
+The initial remote device run was blocked by another test session using both
+devices. After the owner confirmed an exclusive slot on 2026-10-08, all eight
+room/chat UI checks passed on the phone and emulator with the new local-playback
+build. Create/join, presence, readiness, chat, foreground recovery, process
+recovery and offline saved-room retry were verified through the SSH tunnel.
+This does not establish public HTTPS, separate-network behavior or audible sync.
+No other app was stopped, reset or modified. The
+[mobile checkpoint](10-mobile-checkpoint.md) records the additional playback run.
 
 Sanitized reports are under `.local-tools/remote-api-smoke/`,
-`.local-tools/remote-api-restart.json` and `.local-tools/mobile-e2e-server/`.
+`.local-tools/remote-api-restart.json`, `.local-tools/mobile-e2e-server/` and
+`.local-tools/mobile-e2e-playback-20261008/`.
 Screenshots may contain synthetic invites and are not committed.
 
 ## Before public access
