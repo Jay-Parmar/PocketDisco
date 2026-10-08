@@ -65,7 +65,9 @@ class AudioPlaybackModule(context: ReactApplicationContext) :
     }
 
     override fun onHostResume() = onMainThread {
-        if (!invalidated) controller.setForeground(true)
+        controller.setForeground(
+            isPlaybackForeground(reactApplicationContext.lifecycleState, invalidated),
+        )
     }
 
     override fun onHostPause() = onMainThread { controller.setForeground(false) }

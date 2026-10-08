@@ -1,5 +1,6 @@
 package com.pocketdisco.playback
 
+import com.facebook.react.common.LifecycleState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -169,6 +170,39 @@ class PlaybackControllerTest {
         assertEquals(1, results.size)
         assertEquals("cancelled", (results.single().exceptionOrNull() as PlaybackFailure).code)
         assertEquals(0, engine.playCalls)
+    }
+
+    @Test
+    fun aQueuedResumeCannotRestoreForegroundAfterTheHostPauses() {
+        prepareReady()
+        controller.playAt(3000.0, 0.0)
+        var hostState = LifecycleState.RESUMED
+        val queuedResume = {
+            controller.setForeground(isPlaybackForeground(hostState, invalidated = false))
+        }
+        hostState = LifecycleState.BEFORE_RESUME
+        controller.setForeground(false)
+        queuedResume()
+        assertCode("not_foreground") { controller.playAt(3000.0, 0.0) }
+        clock.advance(2000)
+        assertEquals(0, engine.playCalls)
+    }
+
+    @Test
+    fun alreadyResumedHostsPermitPlaybackButDestroyedHostsDoNot() {
+        controller.setForeground(false)
+        controller.setForeground(isPlaybackForeground(LifecycleState.RESUMED, false))
+        assertEquals("ready", prepareReady().status)
+        controller.setForeground(isPlaybackForeground(LifecycleState.BEFORE_CREATE, false))
+        assertCode("not_foreground") { controller.playAt(3000.0, 0.0) }
+    }
+
+    @Test
+    fun invalidationWinsOverAQueuedResume() {
+        prepareReady()
+        controller.setForeground(isPlaybackForeground(LifecycleState.RESUMED, true))
+        assertCode("not_foreground") { controller.playAt(3000.0, 0.0) }
+        assertEquals("paused", controller.snapshot().status)
     }
 
     @Test
