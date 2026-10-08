@@ -67,13 +67,15 @@ class PlaybackController(
         ) throw failure("invalid_deadline")
         val target = ceil(monotonicTimeMs).toLong()
         cancelPending()
+        val request = generation
         useEngine {
             active.pause()
+            if (request != generation || engine !== active || !foreground) return@useEngine
             active.seek(position)
+            if (request != generation || engine !== active || !foreground) return@useEngine
             lastPositionMs = position
             stoppedStatus = "ready"
             scheduledAt = target
-            val request = generation
             startTask = clock.schedule((target - clock.nowMs).coerceAtLeast(0)) {
                 if (request != generation || engine !== active || !foreground) return@schedule
                 startTask = null

@@ -214,6 +214,43 @@ class PlaybackControllerTest {
     }
 
     @Test
+    fun anInterruptionDuringSeekCannotQueueAnotherStart() {
+        prepareReady()
+        engine.onSeek = { engine.listener!!.onInterrupted() }
+        val state = controller.playAt(3000.0, 400.0)
+        assertEquals("paused", state.status)
+        assertNull(state.scheduledStartMonotonicMs)
+        clock.advance(2000)
+        assertEquals(0, engine.playCalls)
+    }
+
+    @Test
+    fun decoderFailureDuringSeekCannotLeaveAStartQueued() {
+        prepareReady()
+        val failed = engine
+        engine.onSeek = { failed.listener!!.onError() }
+        val state = controller.playAt(3000.0, 400.0)
+        assertEquals("error", state.status)
+        assertNull(state.scheduledStartMonotonicMs)
+        clock.advance(2000)
+        assertEquals(0, failed.playCalls)
+    }
+
+    @Test
+    fun pauseAndSeekSettlePendingPreparationOnlyOnce() {
+        for (cancel in listOf<() -> Unit>({ controller.pause() }, { controller.seek(900.0) })) {
+            val results = mutableListOf<Result<PlaybackSnapshot>>()
+            controller.prepare("generated-pulse", 0.0) { results.add(it) }
+            cancel()
+            engine.changeState(EngineState.READY)
+            clock.advance(10_000)
+            assertEquals(1, results.size)
+            assertEquals("cancelled", (results.single().exceptionOrNull() as PlaybackFailure).code)
+            assertEquals(0, engine.playCalls)
+        }
+    }
+
+    @Test
     fun decoderErrorsAreSanitizedAndSettlePreparation() {
         var result: Result<PlaybackSnapshot>? = null
         controller.prepare("generated-pulse", 0.0) { result = it }
@@ -278,6 +315,7 @@ class PlaybackControllerTest {
         override var listener: PlaybackEngine.Listener? = null
         var playCalls = 0
         var released = false
+        var onSeek: (() -> Unit)? = null
 
         override fun prepare(positionMs: Long) {
             this.positionMs = positionMs
@@ -286,7 +324,10 @@ class PlaybackControllerTest {
 
         override fun play() { playCalls += 1 }
         override fun pause() { isPlaying = false }
-        override fun seek(positionMs: Long) { this.positionMs = positionMs }
+        override fun seek(positionMs: Long) {
+            this.positionMs = positionMs
+            onSeek?.invoke()
+        }
         override fun release() { released = true; isPlaying = false }
 
         fun changeState(value: EngineState) {
