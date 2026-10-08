@@ -8,7 +8,17 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from generate import DURATION_SECONDS, SAMPLE_RATE, generate_pcm, main, render
+from generate import DEFAULT_OUTPUT, DURATION_SECONDS, SAMPLE_RATE, generate_pcm, main, render
+
+
+class BundledClipTest(unittest.TestCase):
+    def test_android_asset_matches_the_verified_clip(self):
+        asset = DEFAULT_OUTPUT.read_bytes()
+        self.assertEqual(len(asset), 220332)
+        self.assertEqual(
+            hashlib.sha256(asset).hexdigest(),
+            "a96b5a85a1f4f68b65a10ce11ead3a0f5266098a437ecddc3e21ebdff3288c7e",
+        )
 
 
 class SignalTest(unittest.TestCase):

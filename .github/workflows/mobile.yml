@@ -6,6 +6,7 @@ on:
       - 'apps/mobile/**'
       - 'packages/domain/**'
       - 'tools/mobile_e2e/**'
+      - 'tools/demo_audio/**'
       - '.github/workflows/mobile.yml'
   push:
     branches: [main]
@@ -48,6 +49,8 @@ jobs:
         run: npm test -- --runInBand && npm run typecheck && npm run lint
       - name: Test device harness
         run: python3 -m unittest discover -s tools/mobile_e2e -v
+      - name: Verify generated demo audio
+        run: python3 -m unittest discover -s tools/demo_audio -v
 
   android:
     name: Android builds
