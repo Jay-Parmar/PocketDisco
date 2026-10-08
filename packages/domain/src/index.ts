@@ -1,4 +1,5 @@
 export * from './types.ts';
+export * from './playback.ts';
 export {RoomClient} from './client.ts';
 export type {RoomClientOptions, RoomSocket} from './client.ts';
 export {ClientError} from './errors.ts';

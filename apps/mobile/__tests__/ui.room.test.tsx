@@ -1,6 +1,8 @@
 import React from 'react';
+import { AppState } from 'react-native';
 import ReactTestRenderer, { act } from 'react-test-renderer';
 
+import AudioPlayback from '../src/native/NativeAudioPlayback';
 import { RoomScreen } from '../src/ui/RoomScreen';
 import type { RoomScreenProps } from '../src/ui/RoomScreen';
 import type { RoomDetails } from '../src/ui/types';
@@ -81,7 +83,9 @@ test('shows live members, roles, and their actual ready states', async () => {
   expect(
     screen.root.findByProps({ testID: 'member-rae' }).props.accessibilityLabel,
   ).toBe('Rae, listener, Away');
-  expect(JSON.stringify(screen.toJSON())).toContain('Playback is coming next.');
+  expect(JSON.stringify(screen.toJSON())).toContain(
+    'Room playback is not connected yet.',
+  );
 });
 
 test('sends readiness intent without pretending the server accepted it', async () => {
@@ -169,4 +173,26 @@ test('disables member actions while leaving', async () => {
   expect(button('leave-room-button').props.disabled).toBe(true);
   expect(button('ready-toggle-button').props.disabled).toBe(true);
   expect(button('share-invite-button').props.disabled).toBe(true);
+});
+
+test('local preview uses the native player without changing room readiness', async () => {
+  const previous = AppState.currentState;
+  AppState.currentState = 'active';
+  const native = jest.mocked(AudioPlayback);
+  native.prepare.mockClear();
+  native.playAt.mockClear();
+  native.disconnect.mockClear();
+  try {
+    const props = await render();
+    await press('demo-play-pause');
+    expect(native.prepare).toHaveBeenCalledWith('generated-pulse', 0);
+    expect(native.playAt).toHaveBeenCalledWith(1500, 0);
+    expect(props.onReadyChange).not.toHaveBeenCalled();
+    expect(props.onSendMessage).not.toHaveBeenCalled();
+    await act(async () => screen.update(<RoomScreen {...props} busy />));
+    expect(native.disconnect).toHaveBeenCalledTimes(1);
+    expect(button('demo-play-pause').props.disabled).toBe(true);
+  } finally {
+    AppState.currentState = previous;
+  }
 });

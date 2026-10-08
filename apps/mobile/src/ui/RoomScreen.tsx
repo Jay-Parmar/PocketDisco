@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 
 import { Brand, Button, ErrorBanner } from './components';
+import { DemoPlayer } from './DemoPlayer';
 import { MembersCard } from './MembersCard';
 import { ChatComposer, MessageThread } from './RoomChat';
 import { colors } from './theme';
@@ -198,15 +199,7 @@ export function RoomScreen({
               testID="ready-toggle-button"
             />
           </View>
-          <View style={styles.playbackNote}>
-            <Text style={styles.playbackTitle}>
-              Listening together is on the way.
-            </Text>
-            <Text style={styles.playbackBody}>
-              Playback is coming next. For now, gather your people and say
-              hello.
-            </Text>
-          </View>
+          <DemoPlayer key={room.room_id} enabled={!busy && !!you} />
           <MessageThread
             messages={room.messages}
             currentUserId={currentUserId}
@@ -305,17 +298,4 @@ const styles = StyleSheet.create({
     color: colors.ink,
   },
   body: { fontSize: 14, lineHeight: 21, color: colors.muted },
-  playbackNote: {
-    borderTopWidth: 1,
-    borderTopColor: colors.line,
-    paddingTop: 20,
-    gap: 6,
-  },
-  playbackTitle: {
-    fontSize: 14,
-    lineHeight: 21,
-    fontWeight: '700',
-    color: colors.ink,
-  },
-  playbackBody: { fontSize: 13, lineHeight: 20, color: colors.muted },
 });
