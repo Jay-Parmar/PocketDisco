@@ -35,11 +35,14 @@ const messages: Record<string, string> = {
   playback_failed: 'Could not play the demo. Try again.',
   invalid_position: 'Choose a position within this demo.',
   invalid_schedule: 'Could not schedule playback. Tap play to retry.',
+  invalid_deadline: 'Could not schedule playback. Tap play to retry.',
   missed_deadline: 'The start was delayed. Tap play to retry.',
   not_ready: 'The demo is not ready. Tap play to retry.',
   not_foreground: 'Return to PocketDisco to play the demo.',
   prepare_timeout: 'The demo took too long to load. Tap play to retry.',
   audio_focus: 'Audio is in use. Tap play when it is available.',
+  unsupported_item: 'This demo is not available in this build.',
+  module_unavailable: 'Playback is unavailable. Close and reopen PocketDisco.',
 };
 
 class PlaybackError extends Error {
