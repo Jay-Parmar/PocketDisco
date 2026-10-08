@@ -89,7 +89,7 @@ class Media3PlaybackEngine(private val context: Context) : PlaybackEngine {
     }
 
     override fun play() = player.play()
-    override fun pause() = player.pause()
+    override fun pause() = player.pauseIfRequested()
     override fun seek(positionMs: Long) = player.seekTo(positionMs)
 
     override fun release() {
@@ -103,4 +103,8 @@ class Media3PlaybackEngine(private val context: Context) : PlaybackEngine {
             player.release()
         }
     }
+}
+
+internal fun Player.pauseIfRequested() {
+    if (playWhenReady) pause()
 }
