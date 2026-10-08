@@ -17,8 +17,8 @@ Run from the repository root with Python 3.10 or later and FFmpeg:
 
 ```powershell
 python -m unittest discover -s tools/demo_audio -p 'test_*.py' -v
-python tools/demo_audio/generate.py --ffmpeg .local-tools/ffmpeg/ffmpeg-9.0.2-essentials_build/bin/ffmpeg.exe --output tools/demo_audio/reproduced.m4a
-Get-FileHash -Algorithm SHA256 tools/demo_audio/reproduced.m4a
+python tools/demo_audio/generate.py --ffmpeg .local-tools/ffmpeg/ffmpeg-9.0.2-essentials_build/bin/ffmpeg.exe --output .local-tools/demo-audio/reproduced.m4a
+Get-FileHash -Algorithm SHA256 .local-tools/demo-audio/reproduced.m4a
 ```
 
 Omit `--output` to create the Android asset. Existing output is never replaced,

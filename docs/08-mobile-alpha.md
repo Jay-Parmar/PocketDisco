@@ -19,6 +19,19 @@ scheduled starts, pause, seek, late join, and reconnect. Test tracks are not an
 approved launch catalog. No YouTube extraction,
 Spotify integration, public rooms, uploads, or desktop features are included.
 
+## Local playback increment: 2026-10-08
+
+The Android player now has a provider-neutral timed adapter and a local preview
+card for one bundled generated AAC clip. Native preparation, scheduled start,
+pause, seek, state reporting and cleanup are implemented. No room command or
+ready toggle starts audio in this increment. Each listener explicitly previews
+on their own phone, with an unsynchronized label in the UI.
+
+Native deadlines use elapsed-realtime milliseconds, not server Unix time.
+Clock estimation and room prepare/ready/commit are not connected yet. Background
+and focus interruptions cancel queued starts; returning does not auto-resume.
+Device playback and measured acoustic behavior still require verification.
+
 ## Private-room wire contract
 
 IDs are UUID strings. Times are Unix milliseconds. JSON uses snake_case.

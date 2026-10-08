@@ -30,7 +30,33 @@ to `http://127.0.0.1:8000`; no Metro server is needed for this variant.
 
 [The smoke loop](../../tools/mobile_e2e/README.md) drives one USB phone and one
 emulator. Local SQLite tests are separate from the real PostgreSQL/Redis CI job.
-The current app has private rooms and chat, not music playback.
+The app has private rooms, chat and a local generated-audio preview. Shared
+room playback is not connected yet.
+
+## Local audio preview
+
+The room's audio card plays the bundled 24-second `generated-pulse` test clip
+on this phone only. Joining or becoming ready never starts audio. Play, pause,
+five-second seeks and replay use the Kotlin Media3 adapter. Seeking pauses;
+resuming always needs another tap. Leaving the room releases the player.
+
+The adapter accepts only that bundled item, not arbitrary URLs or files.
+It waits for decoder readiness, schedules against Android's monotonic clock,
+and cancels pending starts on pause, seek, backgrounding, interruption or
+disconnect. Preparation times out after ten seconds. A callback more than
+250 ms late stops with an error instead of starting late. These are control
+limits, not a measured output-latency or synchronization guarantee.
+
+The [portable contract](../../packages/domain/src/playback.ts) reports native
+playhead observations and capabilities. JavaScript polls observations for the
+UI; it does not run the start timer. Mapping the server timeline to the native
+clock, room prepare/commit and acoustic verification remain next steps.
+
+[Audio provenance and generation checks](../../tools/demo_audio/README.md)
+are separate from the reviewed CC0 catalog. Media3 is pinned to
+[1.11.1](https://developer.android.com/jetpack/androidx/releases/media3).
+The player follows Android's [single-thread access rules](https://developer.android.com/media/media3/exoplayer/hello-world)
+and [automatic audio-focus handling](https://developer.android.com/media/optimize/audio-focus).
 
 ## Security and release boundary
 
