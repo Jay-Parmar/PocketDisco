@@ -14,6 +14,7 @@ object LabRuntime {
     private var reportTask: Runnable? = null
     private var code = ""
     private var generation = 0L
+    private var receivedSession: java.util.UUID? = null
     private var node: RelayNode? = null
     private var links: LabLinks? = null
     private var speaker: PcmSpeaker? = null
@@ -43,11 +44,17 @@ object LabRuntime {
         val currentGeneration = generation
         sentProof = PcmProof()
         receivedProof = PcmProof()
+        receivedSession = null
         val nextNode = RelayNode(code, onFrame = { frame ->
             synchronized(this) {
                 if (active && generation == currentGeneration) {
-                    receivedProof.add(frame.pcm)
-                    speaker?.offer(frame.pcm)
+                    if (receivedSession == null) receivedSession = frame.sessionId
+                    if (receivedSession == frame.sessionId) {
+                        receivedProof.add(frame.pcm)
+                        speaker?.offer(frame.pcm)
+                    } else {
+                        status = "Only one source can play. Stop the session before switching sources."
+                    }
                 }
             }
         }, onEvent = { event ->
@@ -87,15 +94,27 @@ object LabRuntime {
 
     @Synchronized
     fun stopReceiver() {
+        check(receivedSession == null) { "Stop the receiver session before starting a new source" }
         speaker?.close()
         speaker = null
     }
 
     @Synchronized
     fun stop(context: Context) {
+        val appContext = context.applicationContext
+        val stoppedGeneration = generation
         active = false
         CaptureBus.onPcm = null
-        CaptureBus.onStopped = null
+        CaptureBus.onStopped = if (CaptureBus.snapshot().running) {
+            {
+                synchronized(this) {
+                    if (!active && generation == stoppedGeneration) {
+                        CaptureBus.onStopped = null
+                        writeReport(appContext)
+                    }
+                }
+            }
+        } else null
         CaptureService.stop(context)
         links?.close()
         speaker?.close()
@@ -115,6 +134,7 @@ object LabRuntime {
             put("frameMillis", 20)
             put("synchronizedPlayback", false)
             put("active", active)
+            put("receivedSession", receivedSession?.toString() ?: "")
             put("status", status)
             put("capture", JSONObject().apply {
                 put("running", capture.running)
