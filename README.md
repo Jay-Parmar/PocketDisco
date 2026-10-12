@@ -20,6 +20,7 @@ Build the room and synchronization engine first with audio that you own or are l
 - [Test audio catalog and license review](docs/09-test-audio-catalog.md)
 - [Android delivery checkpoint](docs/10-mobile-checkpoint.md)
 - [Backend hosting decision and deployment prerequisites](docs/11-deployment-proposal.md)
+- [Capture relay lab checkpoint](docs/12-capture-relay-checkpoint.md)
 
 ## Proposed eventual repository shape
 

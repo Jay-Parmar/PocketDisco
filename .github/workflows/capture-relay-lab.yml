@@ -1,0 +1,114 @@
+name: Capture relay lab
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/android-capture-relay/**'
+      - 'tools/capture_relay_e2e/**'
+      - 'apps/mobile/android/gradlew'
+      - 'apps/mobile/android/gradlew.bat'
+      - 'apps/mobile/android/gradle/wrapper/**'
+      - '.github/workflows/capture-relay-lab.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'experiments/android-capture-relay/**'
+      - 'tools/capture_relay_e2e/**'
+      - 'apps/mobile/android/gradlew'
+      - 'apps/mobile/android/gradlew.bat'
+      - 'apps/mobile/android/gradle/wrapper/**'
+      - '.github/workflows/capture-relay-lab.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: capture-relay-lab-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  harness:
+    name: Capture lab device harness
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+      - name: Test device runner without ADB
+        run: python -m unittest discover -s tools/capture_relay_e2e -v
+
+  android:
+    name: Capture lab tests and APKs
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ANDROID_HOME: ${{ github.workspace }}/.local-tools/android-sdk
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/.local-tools/android-sdk
+      ANDROID_USER_HOME: ${{ github.workspace }}/.local-tools/android-user-home
+      GRADLE_USER_HOME: ${{ github.workspace }}/.local-tools/gradle
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          settings-path: ${{ github.workspace }}/.local-tools/maven
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            .local-tools/gradle/caches
+            .local-tools/gradle/wrapper
+          key: ${{ runner.os }}-capture-relay-gradle-${{ hashFiles('apps/mobile/android/gradle/wrapper/gradle-wrapper.properties', 'experiments/android-capture-relay/**/*.gradle.kts', 'experiments/android-capture-relay/gradle.properties') }}
+      - name: Install pinned Android command-line tools
+        run: |
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          curl --fail --location --retry 3 https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip -o .local-tools/android-tools.zip
+          echo '4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583  .local-tools/android-tools.zip' | sha256sum --check
+          unzip -q .local-tools/android-tools.zip -d "$ANDROID_HOME/cmdline-tools"
+          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          set +o pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          set -o pipefail
+      - name: Install Android packages
+        run: sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0'
+      - name: Test, lint and build the diagnostics
+        run: >-
+          bash apps/mobile/android/gradlew -p experiments/android-capture-relay
+          :protocol:test :lab:testDebugUnitTest :source:testDebugUnitTest
+          :lab:lintDebug :source:lintDebug :lab:assembleDebug :source:assembleDebug
+          --continue --no-daemon --max-workers=2 --console=plain
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: pocketdisco-capture-lab-apk
+          path: experiments/android-capture-relay/lab/build/outputs/apk/debug/lab-debug.apk
+          if-no-files-found: error
+          retention-days: 5
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: pocketdisco-test-source-apk
+          path: experiments/android-capture-relay/source/build/outputs/apk/debug/source-debug.apk
+          if-no-files-found: error
+          retention-days: 5
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: capture-relay-lab-reports
+          path: |
+            experiments/android-capture-relay/protocol/build/test-results/test/
+            experiments/android-capture-relay/protocol/build/reports/tests/test/
+            experiments/android-capture-relay/lab/build/test-results/testDebugUnitTest/
+            experiments/android-capture-relay/lab/build/reports/tests/testDebugUnitTest/
+            experiments/android-capture-relay/lab/build/reports/lint-results-debug.*
+            experiments/android-capture-relay/source/build/test-results/testDebugUnitTest/
+            experiments/android-capture-relay/source/build/reports/tests/testDebugUnitTest/
+            experiments/android-capture-relay/source/build/reports/lint-results-debug.*
+          if-no-files-found: warn
+          retention-days: 5

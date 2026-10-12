@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <queries>
+        <package android:name="app.revanced.android.apps.youtube.music" />
+    </queries>
+    <application
+        android:allowAudioPlaybackCapture="true"
+        android:allowBackup="false"
+        android:label="PocketDisco Test Tone"
+        android:supportsRtl="true"
+        android:theme="@style/SourceTheme">
+        <activity android:name=".SourceActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <service
+            android:name=".SourceService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+        <provider
+            android:name=".GeneratedAudioProvider"
+            android:authorities="com.pocketdisco.capturelab.source.sample"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+    </application>
+</manifest>
