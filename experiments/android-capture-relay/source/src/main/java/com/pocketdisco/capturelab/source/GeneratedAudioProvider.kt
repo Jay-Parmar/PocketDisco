@@ -14,10 +14,15 @@ class GeneratedAudioProvider : ContentProvider() {
     override fun onCreate(): Boolean = true
 
     private fun sample(uri: Uri): File {
-        if (uri != URI) throw FileNotFoundException("Unknown sample")
+        if (uri != URI && uri != MP3_URI) throw FileNotFoundException("Unknown sample")
         synchronized(GeneratedAudioProvider::class.java) {
-            val file = File(requireNotNull(context).cacheDir, "pocketdisco-generated-tone.wav")
-            if (!file.isFile) file.writeBytes(GeneratedTone.wav(60))
+            val app = requireNotNull(context)
+            val name = if (uri == MP3_URI) "generated-pulse.mp3" else "pocketdisco-generated-tone.wav"
+            val file = File(app.cacheDir, name)
+            if (!file.isFile) {
+                val bytes = if (uri == MP3_URI) app.assets.open(name).use { it.readBytes() } else GeneratedTone.wav(60)
+                file.writeBytes(bytes)
+            }
             return file
         }
     }
@@ -28,8 +33,11 @@ class GeneratedAudioProvider : ContentProvider() {
     }
 
     override fun getType(uri: Uri): String {
-        if (uri != URI) throw FileNotFoundException("Unknown sample")
-        return "audio/wav"
+        return when (uri) {
+            URI -> "audio/wav"
+            MP3_URI -> "audio/mpeg"
+            else -> throw FileNotFoundException("Unknown sample")
+        }
     }
 
     override fun query(
@@ -62,5 +70,6 @@ class GeneratedAudioProvider : ContentProvider() {
 
     companion object {
         val URI: Uri = Uri.parse("content://com.pocketdisco.capturelab.source.sample/generated-tone.wav")
+        val MP3_URI: Uri = Uri.parse("content://com.pocketdisco.capturelab.source.sample/generated-pulse.mp3")
     }
 }
