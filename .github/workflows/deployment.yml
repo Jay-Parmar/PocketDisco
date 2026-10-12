@@ -40,6 +40,21 @@ jobs:
       - run: python -m ruff format --check infra/self-hosted tools/remote_api_smoke tools/postgres_backup tools/mobile_e2e
       - run: mkdir -p .local-tools
       - run: sudo python3 -m unittest discover -s infra/self-hosted/tests -v
+      - run: python -m unittest discover -s infra/self-hosted/https/tests -v
+      - name: Validate pinned HTTPS configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          proxy_version=$(python -c 'import runpy; print(runpy.run_path("infra/self-hosted/https/generate.py")["CADDY_VERSION"])')
+          proxy_checksum=$(python -c 'import runpy; print(runpy.run_path("infra/self-hosted/https/generate.py")["LINUX_AMD64_SHA256"])')
+          mkdir -p .local-tools/caddy
+          curl --fail --location --retry 3 "https://github.com/caddyserver/caddy/releases/download/v${proxy_version}/caddy_${proxy_version}_linux_amd64.tar.gz" -o .local-tools/caddy/archive.tar.gz
+          printf '%s  .local-tools/caddy/archive.tar.gz\n' "$proxy_checksum" | sha256sum --check
+          tar --extract --gzip --file .local-tools/caddy/archive.tar.gz --directory .local-tools/caddy caddy
+          for proxy_acme in staging production; do
+            python infra/self-hosted/https/generate.py --public-ip 8.8.8.8 --acme "$proxy_acme" | .local-tools/caddy/caddy adapt --config - --adapter caddyfile > /dev/null
+            python infra/self-hosted/https/generate.py --public-ip 8.8.8.8 --acme "$proxy_acme" --tester-ip 1.1.1.1 | .local-tools/caddy/caddy adapt --config - --adapter caddyfile > /dev/null
+          done
       - run: python -m unittest discover -s tools/remote_api_smoke -v
       - run: python -m unittest discover -s tools/postgres_backup -v
       - run: python -m unittest discover -s tools/mobile_e2e -v
