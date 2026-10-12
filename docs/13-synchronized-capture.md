@@ -6,11 +6,11 @@ is based on PR 9; nothing was merged. The owner requested synchronized playback,
 private rooms using the installed music app, and Play readiness. Two physical
 phones and the emulator were available for the checks below.
 
-Current handoff: the fixed build passed sustained USB playback on both phones.
-The reverse Bluetooth run exposed clock-readiness loss and receiver recovery.
-The private-room handoff passes again. Clock diagnostics identified rejected
-replies and a low sample reserve. Two clock fixes now pass regression tests;
-their device retest is in progress. PR 10 stays draft.
+Current handoff: build `89be729` passes sustained Bluetooth/USB relay and USB
+playback on both physical phones, both installed-music-app generated-file
+directions, the private-room handoff and the six capture safety checks. Clock
+maintenance fixes resolve the reproduced short sample-starvation case. PR 10
+stays draft pending acoustic validation and the separate product/release gates.
 
 ## Scope
 
@@ -285,14 +285,87 @@ timeout or assertion was relaxed.
 
 The candidate is preserved in `.local-tools/capture-relay-lab/artifacts/89be729/`.
 Android tests, lint, builds and APK signatures pass. Capture Lab is installed
-on all three devices, with the internal product updated on Samsung. Sustained
-Bluetooth retesting is in progress.
+on all three devices, with the internal product updated on Samsung.
 
 | APK | SHA256 |
 |---|---|
 | `PocketDisco-internal.apk` | `01c6f865bd7cb0b590f1aa621388f887bf344e6497f02d8997bade221a934322` |
 | `PocketDisco-Capture-Lab-debug.apk` | `235752ff102083331670a9b9bc1ed234da9df8f32093fc13d9d8bb0313ee20df` |
 | `PocketDisco-Test-Source-debug.apk` | `c4ad5215880889f54734d633099aba7a4d7f9a9c610babbef2efc565c83cc906` |
+
+`sync-bluetooth-soak-02` passed all four checks on this build. Nothing sent a
+continuous generated tone through Bluetooth to Samsung, then USB/TCP to the
+emulator. All 180 fresh samples per receiver passed from 12:44:47 to 12:48:22
+UTC, a 215-second window. Both receivers retained seven or eight clock samples,
+despite 15 rejected replies on Samsung and 13 on the emulator during sampling.
+There were no probe timeouts, new starts, resyncs, unscheduled frames, relay or
+output drops, late frames or inserted silence during that window.
+
+| Receiver | Output error, ms | Clock uncertainty, ms | Startup starts / resyncs / dropped output frames |
+|---|---|---|---|
+| Samsung | +2.109 to +4.122 | 4.918 to 29.428 | 2 / 1 / 74 |
+| Emulator | +5.167 to +5.270 | 5.975 to 44.901 | 1 / 0 / 0 |
+
+Samsung's startup recovery preceded the baseline. An independent check of all
+180 observations found fresh reports, advancing non-silent audio and output,
+matching prefix hashes, and unchanged recovery counters. This remains a
+software timing check, not an acoustic measurement.
+
+`sync-usb-soak-03` also passed all four checks and 180 fresh samples per receiver
+on the same build. The emulator sent a continuous generated tone to both
+physical phones. The sample window was 12:50:14 to 12:53:49 UTC, 215 seconds.
+Both receivers kept eight clock samples with no rejected replies or probe
+timeouts. Independent checks found no new recovery, unscheduled frames,
+drops, late frames or inserted silence during sampling.
+
+| Receiver | Output error, ms | Clock uncertainty, ms | Startup starts / resyncs / dropped output frames |
+|---|---|---|---|
+| Nothing | +13.685 to +14.282 | 2.163 to 4.485 | 3 / 2 / 142 |
+| Samsung | -7.806 to -6.030 | 1.538 to 2.888 | 2 / 1 / 75 |
+
+`sync-mixed-music-09` stopped at the foreground guard before any test interaction.
+A read-only follow-up found Samsung unlocked at its launcher. The new
+`sync-mixed-music-10` run passed all four checks with the generated MP3 opened
+in Nothing's installed music app. The original failed setup remains retained.
+`sync-samsung-music-04` passed the same checks with Samsung as the sender.
+
+| Music-app sender / receiver | Eight-sample window, UTC | Output error, ms | Clock uncertainty, ms |
+|---|---|---|---|
+| Nothing / Samsung | 12:56:20 to 12:56:29 | -12.933 to -12.370 | 8.854 to 14.855 |
+| Nothing / emulator | 12:56:20 to 12:56:29 | +3.480 to +3.530 | 10.549 to 29.720 |
+| Samsung / Nothing | 12:58:22 to 12:58:30 | +11.269 to +11.702 | 8.653 to 20.325 |
+| Samsung / emulator | 12:58:22 to 12:58:30 | +2.499 to +2.594 | 11.254 to 27.147 |
+
+Both directions kept seven or eight clock samples and advancing non-silent
+audio with no new recovery or drops during sampling. The physical receiver
+had already calibrated before each baseline: two resyncs and 142 discarded
+frames with Nothing sending, one resync and 74 discarded frames with Samsung
+sending. Emulator receivers had no startup resyncs or output drops. These are
+short generated-file checks, not sustained provider-catalog tests.
+
+`product-nearby-07` passed all four checks from 12:59:31 to 13:01:06 UTC.
+Samsung's internal app created a room, opened nearby audio and sent the
+generated tone to the emulator. The saved playing receiver reported +2.928 ms
+output error, +0.553 ms start error, 1.314 ms clock uncertainty, eight samples
+and no resyncs or dropped output frames. Back returned to the room and the
+runner verified CaptureService was absent before force-stop cleanup. The
+receiver then had zero peers, no ready clock and an empty output queue. Its
+stop-time queue invalidation is separate from the playing observation; the
+saved source snapshot intentionally predates Back.
+
+`sync-generated-regression-02` passed all six original safety checks on this
+build: authenticated USB/TCP, consent cancellation, allowed capture with
+matching PCM, blocked-source silence, receiver background reconnect and
+capture stop. A `QuietPlayback` wrapper kept both test devices at low volume
+until the runner had stopped its apps.
+
+All five CI jobs passed at `a4744a7`, which contains the tested runtime and its
+regression tests. The later checkpoint updates change documentation only.
+Final read-only checks found no active media projections or test-app processes,
+no product capture service and no owned ADB mappings. Media volumes returned
+to their prior values. The isolated local API was stopped; its database at
+`.local-tools/nearby-mobile-20261012.db` is preserved. No music app, older
+product package or unrelated app was removed or reset.
 
 Capture Lab is updated on all three devices. The product is updated on Samsung.
 Android rejected product updates on Nothing and the emulator because their
@@ -313,22 +386,19 @@ only and is not the third-phone test artifact.
 
 ## Remaining work
 
-1. Retest continuous Bluetooth playback and repeat the USB, local-file and
-   product-entry checks on the clock-maintenance build. The
-   tracked runner requires fresh non-silent audio and unchanged peer/recovery
-   counters for every sample. Failed runs retain their baseline, partial
-   samples and final reports. Do not relax timing limits to pass the tests.
-2. Measure actual receiver-speaker skew over ten starts and longer playback,
+1. Measure actual receiver-speaker skew over ten starts and longer playback,
    including route changes, dropout recovery and a third physical Bluetooth
    node. The nominal capture-sample timeline is not hardware-clock drift
-   tracking; longer sessions need measurement.
-3. Resolve the product source and rights before public capture distribution.
+   tracking; longer sessions need measurement. The tracked runner continues
+   to require fresh non-silent audio and unchanged recovery counters for every
+   sample. Failed runs retain their evidence. Do not relax timing limits.
+2. Resolve the product source and rights before public capture distribution.
    A local-file test inside the installed music app does not establish rights
    or capture support for its provider catalog. Do not bypass blocked sources.
-4. Implement Internet-room prepare/commit and the independent-file timeline
+3. Implement Internet-room prepare/commit and the independent-file timeline
    separately. The internal nearby card does not complete shared Internet
    playback or couple room membership to nearby admission.
-5. Complete the release gates below. Keep desktop and unrestricted mesh work
+4. Complete the release gates below. Keep desktop and unrestricted mesh work
    paused; neither was added in this milestone.
 
 ## Play gates remain open
