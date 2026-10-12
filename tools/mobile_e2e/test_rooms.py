@@ -410,6 +410,18 @@ class DeviceSafetyTest(unittest.TestCase):
 
 
 class ScenarioTest(unittest.TestCase):
+    def test_leave_control_search_starts_toward_the_header(self):
+        device = RoomDevice("adb", "test-device", "test")
+        button = Element("node", **{"resource-id": "leave-room-button"})
+        with (
+            patch.object(device, "nodes", side_effect=[[], [button]]),
+            patch.object(device, "check_foreground"),
+            patch.object(device, "scroll") as scroll,
+            patch("rooms.time.sleep"),
+        ):
+            self.assertIs(device.find_id("leave-room-button"), button)
+        scroll.assert_called_once_with(False)
+
     def devices(self):
         devices = [Mock() for _ in range(3)]
         devices[0].find_id.return_value = Element("node", text="0123456789AB")

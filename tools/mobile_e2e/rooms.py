@@ -147,7 +147,7 @@ class RoomDevice(ProductDevice):
         self.check_foreground({PRODUCT, *LAUNCHERS})
         super().launch_product()
 
-    def wait_ui(self, predicate, scroll=False):
+    def wait_ui(self, predicate, scroll=False, up_first=False):
         deadline = min(time.monotonic() + 30, self.deadline)
         for attempt in range(12):
             if time.monotonic() >= deadline:
@@ -164,7 +164,7 @@ class RoomDevice(ProductDevice):
                 return result
             if scroll:
                 self.check_foreground({PRODUCT})
-                self.scroll(attempt % 8 < 4)
+                self.scroll((attempt % 8 < 4) != up_first)
             time.sleep(0.25)
         raise RoomFailure("expected_ui_state_missing")
 
@@ -174,6 +174,7 @@ class RoomDevice(ProductDevice):
                 (node for node in nodes if node.get("resource-id") == identity), None
             ),
             scroll=True,
+            up_first=identity == "leave-room-button",
         )
 
     def tap_id(self, identity):
