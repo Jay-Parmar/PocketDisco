@@ -208,6 +208,19 @@ class TapTest(unittest.TestCase):
         command.assert_any_call("shell", "wm", "size")
         command.assert_called_with("shell", "input", "tap", "317", "1039")
 
+    def test_nothing_source_file_button_needs_no_scroll(self):
+        title = "Open generated file in music app"
+        node = Element("node", package=SOURCE, text=title, bounds="[99,1995][985,2142]")
+        with patch.object(self.device, "find", return_value=node) as find, \
+                patch.object(self.device, "command", return_value="Physical size: 1084x2412") as command, \
+                patch.object(self.device, "check_foreground") as guard, \
+                patch.object(self.device, "scroll") as scroll:
+            self.device.tap(title, SOURCE)
+        find.assert_called_once_with(title, SOURCE)
+        scroll.assert_not_called()
+        guard.assert_called_once_with({SOURCE})
+        command.assert_called_with("shell", "input", "tap", "542", "2068")
+
     def test_clipped_control_has_bounded_scroll_attempts(self):
         clipped = Element("node", package=LAB, text="Host USB/TCP test", bounds="[106,0][529,98]")
         with patch.object(self.device, "find", return_value=clipped) as find, \

@@ -133,12 +133,12 @@ class Device:
         for attempt in range(8):
             node = self.find(text, package)
             _, top, _, bottom = bounds(node)
-            if height * .15 <= top < bottom <= height * .85:
+            if height * .1 <= top < bottom <= height * .9:
                 self.tap_node(node)
                 return
             if attempt < 7:
                 self.check_foreground({package})
-                self.scroll(down=top >= height * .15)
+                self.scroll(down=top >= height * .1)
         raise AssertionError(f"{self.label}: control stayed near the screen edge: {text}")
 
     def fill_code(self, code):
