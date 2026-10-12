@@ -5,6 +5,12 @@ Nothing here changes the private backend, router, firewall or mobile endpoint.
 Keep the [private deployment gates](../../../docs/11-deployment-proposal.md) open
 until the corresponding checks have actually passed.
 
+The owner now allows only public 50080 and 50443. The IP/HTTP-01 template below
+cannot obtain or renew certificates through those ports. Keep it uninstalled;
+the next path needs an owner-controlled hostname and DNS-01 automation, with
+the app using `https://HOSTNAME:50443`. Exact forwarding targets remain
+unconfirmed. See the [updated port constraint](../../../docs/11-deployment-proposal.md#restricted-external-ports-2026-10-12).
+
 ## Certificate and binary
 
 A domain is useful for a stable app address, but is not required. Let's Encrypt

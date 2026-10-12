@@ -108,14 +108,45 @@ staging/production configuration variants pass local parser checks with the
 checksum-verified binary. This is preparation only: no proxy service, certificate,
 trusted-proxy override or public mobile endpoint has been installed.
 
+## Restricted external ports: 2026-10-12
+
+The owner reports forwarding public ports 50080 and 50443. Public 80 and 443
+cannot be forwarded. This supersedes the standard-port activation request
+above; do not keep requesting those ports or expose the raw API as a fallback.
+The exact LAN destination ports and router WAN address still need confirmation.
+Router rules target the server's LAN address, not its public address.
+
+At 15:54 UTC the server still had LAN address `192.168.5.187`, outbound public
+address `117.252.78.56`, and a healthy API on `127.0.0.1:18080`. All three
+PocketDisco units were active with zero restarts. There were no listeners on
+80, 443, 50080 or 50443. TCP probes from the development PC to the two public
+high ports did not connect. With no ingress listener, this does not establish
+whether the router rules are correct. No services or firewall rules were changed.
+
+HTTPS/WSS can use port 50443, but the prepared IP-certificate flow cannot
+validate through these high ports: Let's Encrypt HTTP-01 requires public 80,
+TLS-ALPN-01 requires public 443, and DNS-01 cannot validate IP addresses.
+Use an owner-controlled hostname with DNS-01 and automated renewal instead.
+The intended app origin is `https://HOSTNAME:50443`, once DNS, certificate and
+external access are verified. A certificate is for the hostname, not the port.
+See [challenge requirements](https://letsencrypt.org/docs/challenge-types/)
+and [Caddy DNS validation](https://caddyserver.com/docs/automatic-https#dns-challenge).
+
+Next input is a hostname and DNS provider, not a password or API key in chat.
+Review scoped DNS credentials and renewal support before choosing an ACME
+integration. The existing unmodified-Caddy template supports neither this DNS
+flow nor an activated public endpoint yet. Do not deploy it unchanged, disable
+certificate checks, install a test CA on phones, or move guest traffic to HTTP.
+Port 50080 is not needed for DNS-01 and must not serve API credentials or chat.
+
 ## Before public access
 
 1. Confirm the public router can reach the Linux server. The development PC and
    server currently use different LAN subnets; forwarding to the wrong one will
    not expose this backend. Do not install an unapproved relay on the PC.
-2. Select an owned API hostname, or verify the owner's static public IP, and
-   configure HTTPS/WSS ingress with automatic certificate renewal. Normal
-   direct ingress uses TCP 443, with TCP 80 for HTTP certificate validation.
+2. Under the current high-port constraint, select an owner-controlled hostname
+   and DNS provider, then configure DNS-01 renewal and HTTPS/WSS on public
+   port 50443. Confirm which LAN port that rule reaches before binding ingress.
    Never forward SSH, either datastore, or the internal API port.
 3. Set proxy body/header timeouts, connection limits and token-safe logs. Trust
    only the actual proxy peer. The API currently trusts no forwarded headers.
