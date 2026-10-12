@@ -6,11 +6,57 @@ is based on PR 9; nothing was merged. The owner requested synchronized playback,
 private rooms using the installed music app, and Play readiness. Two physical
 phones and the emulator were available for the checks below.
 
-Current handoff: build `89be729` passes sustained Bluetooth/USB relay and USB
-playback on both physical phones, both installed-music-app generated-file
-directions, the private-room handoff and the six capture safety checks. Clock
-maintenance fixes resolve the reproduced short sample-starvation case. PR 10
-stays draft pending acoustic validation and the separate product/release gates.
+Current handoff: build `89be729` passed the earlier sustained relay, USB,
+generated-file and capture safety checks below. A later same-day Bluetooth
+regression lost its clock estimate; the USB comparison passed. Reliable
+Bluetooth timing is still open. PR 10 stays draft pending this regression,
+acoustic validation and the separate product/release gates.
+
+## Connection-recovery regression: 2026-10-12
+
+Reports are under `.local-tools/mobile-connection-20261012/`. Capture Lab stays
+at `89be729`; no timing limits or source-app settings were changed. The source
+was the owned generated MP3 opened in Nothing's installed music app, not its
+provider catalog.
+
+`relay-regression-01` stopped before capture because Samsung's lab package was
+absent. The existing lab and generated-source APKs were installed in its normal
+user profile without removing or resetting any app.
+
+`relay-regression-02` ran from 13:59:57 to 14:02:08 UTC: Nothing to Samsung over
+paired Bluetooth, then Samsung to the emulator over USB. Authentication and
+initial scheduled output passed. Matching audible-prefix PCM hashes reached
+both receivers, but the stable audio/timing check failed. The final clock
+round trips were 889.761 ms on Samsung and 923.766 ms on the emulator. Both
+receivers had no usable clock samples and stopped in `waiting_clock`. Each
+had 50 rejected replies; the source and relay links stayed connected with
+empty application relay queues. The 200 ms clock admission limit was not
+relaxed. Matching bytes alone do not establish synchronized output.
+
+`relay-usb-03` used the same sender and generated file with separate USB paths
+to Samsung and the emulator. All four checks passed from 14:32:48 to 14:34:10
+UTC. Both receivers kept eight clock samples with no rejected replies or probe
+timeouts. Eight fresh non-silent observations per receiver ran from 14:33:59
+to 14:34:08 UTC without new recovery, drops, late frames or inserted silence.
+
+| Receiver | Output error, ms | Clock uncertainty, ms | Startup starts / resyncs / dropped frames |
+|---|---|---|---|
+| Samsung | +6.528 to +7.016 | 3.330 to 4.475 | 3 / 2 / 158 |
+| Emulator | +3.763 to +3.835 | 2.609 to 3.995 | 1 / 0 / 0 |
+
+Samsung also had one late frame before the sample baseline. Both receivers'
+audible-prefix hash matched the source and the failed Bluetooth run. These
+reports sample devices sequentially; final frame totals need not be identical.
+
+The comparison points toward the Bluetooth/relay path, but does not isolate
+radio latency from reader stalls or scheduling. No speculative timing fix was
+made. Instrument that path and repeat sustained checks before claiming a
+resolution. This short USB result is not an acoustic measurement or a public
+music-catalog test, and it does not delay the original music app's speaker.
+
+After cleanup, all three devices reported no active media projection. The
+runner removed its relay mappings and restored each prior media volume. The
+separate API mappings remain for private-room testing.
 
 ## Scope
 
@@ -372,6 +418,12 @@ Android rejected product updates on Nothing and the emulator because their
 older internal packages have a different signing key. Those apps and their
 saved guest sessions remain untouched. Replacement needs the owner's approval;
 it is not required for the separate Capture Lab tests.
+
+That product-update blocker was resolved later the same day: the matching
+existing development signing key was identified, and all three products were
+updated in place. Nothing was uninstalled or cleared. The two signer-specific
+internal APKs and checksums are recorded in the
+[mobile checkpoint](10-mobile-checkpoint.md).
 
 For a third-phone nearby test, install Capture Lab on it and use the same
 new session code on all peers. Follow the [paired-Bluetooth runbook](../experiments/android-capture-relay/README.md#three-phone-paired-bluetooth-check).
