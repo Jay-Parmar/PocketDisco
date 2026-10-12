@@ -3,4 +3,7 @@ plugins { id("com.facebook.react.settings") }
 extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
 rootProject.name = 'PocketDisco'
 include ':app'
+include ':core', ':protocol'
+project(':core').projectDir = file('../../../experiments/android-capture-relay/core')
+project(':protocol').projectDir = file('../../../experiments/android-capture-relay/protocol')
 includeBuild('../node_modules/@react-native/gradle-plugin')

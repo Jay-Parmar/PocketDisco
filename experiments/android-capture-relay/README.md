@@ -1,6 +1,7 @@
 # Capture relay lab
 
-Internal Android 10+ diagnostic, separate from the PocketDisco product app. It
+Internal Android 10+ diagnostic, also available from PocketDisco's internal
+room screen through the [shared library](core/README.md). It
 does not turn a stock phone into an ordinary Bluetooth speaker. Test only
 generated audio or audio you have permission to transmit.
 
@@ -9,8 +10,9 @@ Source capture restrictions remain in force. There is no microphone fallback,
 screen recording, music-app patching, protected-stream extraction, backend
 audio relay or provider integration approval.
 
-Audio is fixed 16 kHz, mono, PCM16 little-endian in 20 ms frames. This is a
-low-fidelity transport diagnostic, not synchronized music playback. Capture
+Audio is fixed 16 kHz, mono, PCM16 little-endian in 20 ms frames. Receivers
+schedule output against the source clock with a shared 1.5-second buffer.
+This remains a low-fidelity diagnostic, not a music-quality release. Capture
 does not delay the original speaker, so receivers lag it. Each node allows
 three pending or active direct links and forwards at most three hops. There
 is no automatic discovery or unrestricted mesh.
@@ -22,7 +24,7 @@ Use JDK 17, SDK package `platforms;android-37.0` and build tools 37.0.0. Point `
 local tools. The mobile wrapper supplies Gradle 9.5.0. From the repository root:
 
 ```powershell
-apps/mobile/android/gradlew.bat -p experiments/android-capture-relay :protocol:test :lab:testDebugUnitTest :source:testDebugUnitTest :lab:lintDebug :source:lintDebug :lab:assembleDebug :source:assembleDebug --max-workers=2 --console=plain
+apps/mobile/android/gradlew.bat -p experiments/android-capture-relay :protocol:test :core:testDebugUnitTest :source:testDebugUnitTest :core:lintDebug :lab:lintDebug :source:lintDebug :lab:assembleDebug :source:assembleDebug --max-workers=2 --console=plain
 ```
 
 Use `bash apps/mobile/android/gradlew` instead on Linux. No React Native or
@@ -41,6 +43,10 @@ These are debug diagnostics, not Play artifacts. They do not replace
 PocketDisco or the installed music app. Install Capture Lab on every test
 phone and Test Source on the sending phone. The [source notes](source/README.md)
 describe the generated tone and bundled MP3 provenance.
+
+Update every peer together. The source-clock protocol is version 2 and rejects
+older lab peers. The [synchronization checkpoint](../../docs/13-synchronized-capture.md)
+records tested APK hashes and the limits of the hardware results.
 
 CI and local debug builds may use different signing keys. Android will not
 update an installed package with an APK signed by a different key. Use APKs
@@ -64,7 +70,9 @@ keep receiver screens open. Backgrounding a receiver stops its session.
 5. On A, select **Generated source**, tap **Start capture** and approve
    Android's audio/screen consent. Tap **Open generated source**, then
    **Play allowed**. B and C should receive the generated tone through the
-   selected chain. Refresh their metrics and note drop counters and errors.
+   selected chain. Allow startup calibration to settle, then check that both
+   report a ready clock and `playing` output. Note uncertainty, output error,
+   resyncs and drops. Keep the sender quiet when comparing receivers.
 6. Try **Play blocked** on A's Test Source. The tone still plays locally, but
    capture should become silent. Silence alone is not proof of a policy
    block: a paused or unavailable source can also be silent.
@@ -106,10 +114,36 @@ After stopping both sessions, remove only the mapping created for this test:
 adb -s PHONE_SERIAL forward --remove tcp:18990
 ```
 
+For a physical USB receiver, first check its `adb reverse --list`. If port
+18991 is unused, map `tcp:18991` on that receiver to the PC's `tcp:18990`,
+then tap **Receive USB phone test**. Remove only that reverse mapping after
+the test. The [three-device runner](../../tools/capture_relay_e2e/README.md#scheduled-receiver-check)
+owns and cleans up these mappings for USB fan-out and mixed-link checks.
+
+## Receiver timing
+
+Authenticated clock probes travel to the original source, including across
+relay hops. Receivers require fresh estimates before scheduling frames. Clock
+expiry, link loss, late audio and timestamp failures stop or rebuffer output;
+old audio is never drained as a delayed backlog. The bounded queue holds at
+most 100 frames. AudioTrack timestamps calibrate output lead and report error
+against the scheduled timeline. Startup calibration may discard frames.
+
+Maintenance probes run every 500 ms. Startup or a low reserve of fresh samples
+allows at most seven probes at 100 ms spacing, with one request pending at a
+time. Refilled clocks return to maintenance cadence. This does not relax the
+three-sample readiness rule, five-second expiry or 100 ms uncertainty limit.
+
+All receivers use the same future source deadline; each hop does not add a new
+1.5-second delay. The sender's original app is outside this timeline. A ready
+clock or a small software output error is not a microphone measurement. Long
+sessions, changing audio routes, three physical Bluetooth nodes and ten-start
+acoustic trials remain hardware gates.
+
 ## Metrics and privacy
 
 While a session is active, the app updates its private `files/report.json`
-about once a second. **Refresh metrics** and **Stop session** also write it.
+about once a second. Writes are atomic. **Refresh metrics** and **Stop session** also write it.
 Tap **Show details** to see the full snapshot in the app.
 It contains frame counts, peaks, hashes, relay state and output progress, not
 raw audio or the join code. Captured PCM uses bounded memory queues and is

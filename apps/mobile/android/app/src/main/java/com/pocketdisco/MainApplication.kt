@@ -7,6 +7,7 @@ import com.facebook.react.ReactHost
 import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.pocketdisco.playback.AudioPlaybackPackage
+import com.pocketdisco.nearby.NearbyAudioPackage
 import com.pocketdisco.session.DeviceSessionPackage
 
 class MainApplication : Application(), ReactApplication {
@@ -18,6 +19,7 @@ class MainApplication : Application(), ReactApplication {
         PackageList(this).packages.apply {
           add(DeviceSessionPackage())
           add(AudioPlaybackPackage())
+          add(NearbyAudioPackage())
         },
     )
   }

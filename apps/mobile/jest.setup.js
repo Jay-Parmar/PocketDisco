@@ -19,6 +19,15 @@ jest.mock('./src/native/NativeDeviceSession', () => ({
   },
 }));
 
+jest.mock('./src/native/NativeNearbyAudio', () => ({
+  __esModule: true,
+  default: {
+    getAvailability: jest.fn(() => ({ enabled: false, supported: false })),
+    open: jest.fn(async () => undefined),
+    stop: jest.fn(async () => undefined),
+  },
+}));
+
 jest.mock('./src/native/NativeAudioPlayback', () => {
   const idle = {
     itemId: null,

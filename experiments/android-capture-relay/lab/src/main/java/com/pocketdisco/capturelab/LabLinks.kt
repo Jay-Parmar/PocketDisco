@@ -70,11 +70,15 @@ class LabLinks(
         }
     }
 
-    fun connectEmulator() = connect("USB/TCP") {
+    fun connectEmulator() = connectTcp("10.0.2.2", PORT)
+
+    fun connectUsbPhone() = connectTcp("127.0.0.1", USB_RECEIVER_PORT)
+
+    private fun connectTcp(host: String, port: Int) = connect("USB/TCP") {
         val socket = Socket()
         if (!register(socket)) return@connect
         try {
-            socket.connect(InetSocketAddress("10.0.2.2", PORT), 5000)
+            socket.connect(InetSocketAddress(host, port), 5000)
             attachTcp(socket)
         } catch (error: Exception) {
             discard(socket)
@@ -210,6 +214,7 @@ class LabLinks(
 
     companion object {
         const val PORT = 18990
+        const val USB_RECEIVER_PORT = 18991
         val SERVICE_ID: UUID = UUID.fromString("d35c0d15-5c28-48a5-ae72-d4f926d3a6d0")
     }
 }

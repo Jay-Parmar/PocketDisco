@@ -82,8 +82,8 @@ jobs:
       - name: Test, lint and build the diagnostics
         run: >-
           bash apps/mobile/android/gradlew -p experiments/android-capture-relay
-          :protocol:test :lab:testDebugUnitTest :source:testDebugUnitTest
-          :lab:lintDebug :source:lintDebug :lab:assembleDebug :source:assembleDebug
+          :protocol:test :core:testDebugUnitTest :source:testDebugUnitTest
+          :core:lintDebug :lab:lintDebug :source:lintDebug :lab:assembleDebug :source:assembleDebug
           --continue --no-daemon --max-workers=2 --console=plain
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
@@ -104,8 +104,9 @@ jobs:
           path: |
             experiments/android-capture-relay/protocol/build/test-results/test/
             experiments/android-capture-relay/protocol/build/reports/tests/test/
-            experiments/android-capture-relay/lab/build/test-results/testDebugUnitTest/
-            experiments/android-capture-relay/lab/build/reports/tests/testDebugUnitTest/
+            experiments/android-capture-relay/core/build/test-results/testDebugUnitTest/
+            experiments/android-capture-relay/core/build/reports/tests/testDebugUnitTest/
+            experiments/android-capture-relay/core/build/reports/lint-results-debug.*
             experiments/android-capture-relay/lab/build/reports/lint-results-debug.*
             experiments/android-capture-relay/source/build/test-results/testDebugUnitTest/
             experiments/android-capture-relay/source/build/reports/tests/testDebugUnitTest/

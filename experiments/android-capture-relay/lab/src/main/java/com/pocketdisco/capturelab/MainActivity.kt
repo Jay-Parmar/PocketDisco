@@ -22,6 +22,8 @@ import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.InputType
 import android.view.View
 import android.view.ViewGroup
@@ -36,6 +38,7 @@ import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.TextView
+import android.window.OnBackInvokedDispatcher
 
 class MainActivity : Activity() {
     private lateinit var code: EditText
@@ -46,6 +49,15 @@ class MainActivity : Activity() {
     private var sourcePackage = SOURCE_PACKAGE
     private var pendingConsent = false
     private var bluetoothAction: (() -> Unit)? = null
+    private val updates = Handler(Looper.getMainLooper())
+    private var actionNote: String? = null
+    private var actionNoteUntil = 0L
+    private val refreshTask = object : Runnable {
+        override fun run() {
+            refresh()
+            updates.postDelayed(this, 2000)
+        }
+    }
     private val noisy = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             LabRuntime.stop(context)
@@ -89,8 +101,8 @@ class MainActivity : Activity() {
         label(column, "Pass the sound.", 34f, INK, true)
         label(column, "A small sound experiment. A few phones. One signal.", 16f)
         pulse(column)
-        label(column, "INTERNAL TEST  /  NOT SYNCHRONIZED", 12f, CORAL, true)
-        label(column, "Generated or authorized audio only. Receivers lag behind the source.", 14f)
+        label(column, "SYNC PREVIEW  /  RECEIVERS ONLY", 12f, CORAL, true)
+        label(column, "A shared receiver timeline with a 1.5 second buffer. The source app's speaker still plays first.", 14f)
 
         val sessionCard = panel(column)
         label(sessionCard, "01  /  SESSION", 12f, VIOLET, true)
@@ -140,11 +152,17 @@ class MainActivity : Activity() {
             links.connectEmulator()
             refresh("Connecting through the PC. Keep this receiver screen open.")
         })
+        action(linkCard, "Receive USB phone test") {
+            val links = configure()
+            LabRuntime.receive(this)
+            links.connectUsbPhone()
+            refresh("Connecting through the PC's USB reverse mapping. Keep this receiver open.")
+        }
         label(linkCard, "PAIRED BLUETOOTH", 12f, LIME, true)
         actionRow(linkCard, "Host paired Bluetooth", "Receive paired Bluetooth", {
             withBluetooth { configure().listenBluetooth(); refresh("Paired Bluetooth listener started.") }
         }, { withBluetooth { chooseBluetoothPeer() } })
-        label(linkCard, "Pair in Android settings first. Up to 3 links and 3 hops. A receiver can host the next link. Physical hardware testing is pending.", 14f)
+        label(linkCard, "Pair in Android settings first. Up to 3 links and 3 hops. A receiver can host the next link. This is a separate nearby session, not Internet-room audio.", 14f)
 
         val captureCard = panel(column)
         label(captureCard, "03  /  CAPTURE", 12f, VIOLET, true)
@@ -179,7 +197,7 @@ class MainActivity : Activity() {
         label(checkCard, "04  /  SESSION CHECK", 12f, VIOLET, true)
         message = label(checkCard, "Ready", 18f, INK, true)
         summary = label(checkCard, "", 16f, LIME)
-        label(checkCard, "Refresh for current counters. Output counters do not prove audible synchronization.", 13f)
+        label(checkCard, "Clock and output estimates update live. These are software measurements, not a measured speaker-to-speaker result.", 13f)
         actionRow(checkCard, "Refresh metrics", "Stop session", { refresh() }, {
             LabRuntime.stop(this); refresh("Session stopped")
         }, rightColor = CORAL)
@@ -199,6 +217,12 @@ class MainActivity : Activity() {
         } else {
             @Suppress("DEPRECATION")
             registerReceiver(noisy, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
+        }
+        if (Build.VERSION.SDK_INT >= 33) {
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT) {
+                LabRuntime.stop(this)
+                finish()
+            }
         }
         refresh()
     }
@@ -382,12 +406,22 @@ class MainActivity : Activity() {
 
     private fun refresh(note: String? = null) {
         if (!::metrics.isInitialized) return
-        message.text = note ?: LabRuntime.status
+        screen.keepScreenOn = LabRuntime.active
+        if (note != null) {
+            actionNote = note
+            actionNoteUntil = android.os.SystemClock.uptimeMillis() + 5000
+        }
+        message.text = if (android.os.SystemClock.uptimeMillis() < actionNoteUntil) actionNote else LabRuntime.status
         val snapshot = LabRuntime.snapshot()
         val capture = snapshot.getJSONObject("capture")
         val relay = snapshot.getJSONObject("relay")
+        val output = snapshot.getJSONObject("output")
+        val clock = if (relay.optBoolean("clockReady")) "Clock ready" else "Waiting for source clock"
+        val uncertainty = if (relay.isNull("clockUncertaintyNanos")) "" else
+            " / ~${relay.optLong("clockUncertaintyNanos") / 1_000_000} ms uncertainty"
         summary.text = "${relay.optInt("peers")} peers  /  ${capture.optLong("frames")} captured frames\n" +
-            "${relay.optLong("receivedFrames")} received  /  ${capture.optLong("nonSilentFrames")} signal frames"
+            "${relay.optLong("receivedFrames")} received  /  ${capture.optLong("nonSilentFrames")} signal frames\n" +
+            "$clock$uncertainty\nOutput: ${output.optString("timingState", "stopped")} / ${output.optLong("resyncs")} realignments"
         metrics.text = snapshot.toString(2)
         LabRuntime.writeReport(this)
     }
@@ -396,6 +430,8 @@ class MainActivity : Activity() {
         super.onResume()
         closeCodeEditor()
         refresh()
+        updates.removeCallbacks(refreshTask)
+        updates.postDelayed(refreshTask, 2000)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -406,12 +442,21 @@ class MainActivity : Activity() {
 
     override fun onStop() {
         super.onStop()
+        updates.removeCallbacks(refreshTask)
         if (!isChangingConfigurations && !pendingConsent && !CaptureBus.snapshot().running) LabRuntime.stop(this)
     }
 
     override fun onDestroy() {
+        updates.removeCallbacks(refreshTask)
+        if (isFinishing) LabRuntime.stop(this)
         unregisterReceiver(noisy)
         super.onDestroy()
+    }
+
+    @Deprecated("Back callback for Android 10 through 12")
+    override fun onBackPressed() {
+        LabRuntime.stop(this)
+        super.onBackPressed()
     }
 
     companion object {

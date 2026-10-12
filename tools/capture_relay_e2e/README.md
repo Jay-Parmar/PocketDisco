@@ -45,7 +45,8 @@ that bundles the generated MP3, not an earlier WAV-only build.
 
 Reports contain diagnostic counters and hashes, not PCM, session codes, device
 serials, screenshots, or saved UI hierarchies. Output must stay inside the repo.
-The app-private report can be a partial write; polling retries JSON parse failures.
+Current app-private reports use atomic writes; polling also tolerates an
+unavailable report or a JSON parse failure while an older build is running.
 The `first100AudibleFramesSha256` field hashes non-silent PCM frames. Its name
 does not imply that a microphone measured audible output.
 
@@ -60,3 +61,63 @@ phone, Bluetooth or acoustic results.
 
 `run.py` is import-safe. `Device` exposes `command`, `launch`, `tap`, `fill_code`,
 `consent`, `report`, and `wait_report` for a supervised manual test.
+
+## Scheduled receiver check
+
+`sync_run.py` uses one source and two receivers with protocol-v2 builds. It
+temporarily lowers media volume to at most 2, stops the owned test apps before
+restoring the previous volume, and preserves volume changes made during a run.
+It refuses busy ADB ports and unexpected foreground apps.
+Before tapping, the runner reads Android's status and navigation bar bounds
+and scrolls clipped controls into the usable display area. Unrecognized
+display geometry stops the test. USB/TCP setup also requires a fresh
+listener-ready report before connecting a receiver, so a missed Host action
+fails at setup.
+
+For an emulator source and two physical USB receivers:
+
+```powershell
+python tools/capture_relay_e2e/sync_run.py --adb .local-tools/android-sdk/platform-tools/adb.exe --source emulator-5554 --receiver PHONE_A --receiver PHONE_B --transport usb --output .local-tools/sync-usb-new
+```
+
+For a paired physical Bluetooth link followed by a USB hop to the emulator:
+
+```powershell
+python tools/capture_relay_e2e/sync_run.py --adb .local-tools/android-sdk/platform-tools/adb.exe --source PHONE_A --receiver PHONE_B --receiver emulator-5554 --transport mixed --peer-name "Phone A paired name" --music-file --output .local-tools/sync-mixed-new
+```
+
+The mixed path is A -> Bluetooth -> B -> ADB loopback TCP -> emulator.
+Pair A and B first. `--music-file` opens only the bundled generated MP3 in the
+already installed music app. Its local-audio permission must be settled by
+the owner before running; this runner does not grant it. Omit the flag to use
+the generated-tone source.
+
+The four checks cover two authenticated peers, scheduled output on both
+receivers, matching non-silent PCM prefixes, and eight fresh advancing timing
+samples per receiver by default. Each sample requires new non-silent captured
+and received frames, advancing output, and unchanged recovery/drop counters
+against the post-audio baseline. A lost clock, changed peer count, extra start,
+resync, late frame, inserted silence or drop fails the run even if it recovers.
+
+Use `--samples` from 8 to 600 for a bounded sustained test. For roughly three
+minutes of continuous generated tone:
+
+```powershell
+python tools/capture_relay_e2e/sync_run.py --adb .local-tools/android-sdk/platform-tools/adb.exe --source emulator-5554 --receiver PHONE_A --receiver PHONE_B --transport usb --samples 180 --output .local-tools/sync-usb-sustained-new
+```
+
+The runner waits one second between samples; ADB reads and bounded report waits
+add time. More than eight samples requires the continuous generated-tone
+source, so combining `--music-file` with a larger count is rejected before
+device work. The generated MP3 is finite, not a long-test source.
+
+Results retain the baseline even on failure, per-check observations and sampled error,
+uncertainty, non-silent frame counts, output progress and drop counters. On
+failure, partial samples are kept. Final read-only device reports are refreshed
+before cleanup so source errors are retained too; a failed read is recorded
+without skipping the other devices or cleanup. Retained start-error values are
+not independent start trials. Prefix hashes do not verify every frame.
+
+This checks software timing windows, not acoustic alignment, Bluetooth
+range, three physical radio nodes, catalog music or synchronization of the
+sender's original speaker. The public release contains no capture engine.

@@ -3,6 +3,7 @@ package com.pocketdisco.capturelab
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.util.AtomicFile
 import com.pocketdisco.capturelab.protocol.RelayNode
 import org.json.JSONObject
 import java.io.File
@@ -18,6 +19,8 @@ object LabRuntime {
     private var node: RelayNode? = null
     private var links: LabLinks? = null
     private var speaker: PcmSpeaker? = null
+    private var clockWasReady = false
+    private var reportSequence = 0L
     private var sentProof = PcmProof()
     private var receivedProof = PcmProof()
     @Volatile var active = false
@@ -45,18 +48,31 @@ object LabRuntime {
         sentProof = PcmProof()
         receivedProof = PcmProof()
         receivedSession = null
+        clockWasReady = false
         val nextNode = RelayNode(code, onFrame = { frame ->
             synchronized(this) {
                 if (active && generation == currentGeneration) {
                     if (receivedSession == frame.sessionId) {
                         receivedProof.add(frame.pcm)
-                        speaker?.offer(frame.pcm)
                     }
+                }
+            }
+        }, onTimedFrame = { timed ->
+            synchronized(this) {
+                if (active && generation == currentGeneration && receivedSession == timed.frame.sessionId) {
+                    clockWasReady = true
+                    speaker?.offer(timed)
                 }
             }
         }, onEvent = { event ->
             synchronized(this) {
-                if (active && generation == currentGeneration) status = event
+                if (active && generation == currentGeneration) {
+                    status = event
+                    if (clockWasReady && node?.snapshot()?.clockReady != true) {
+                        speaker?.invalidateTiming()
+                        clockWasReady = false
+                    }
+                }
             }
         }, acceptSession = { session ->
             synchronized(this) {
@@ -91,6 +107,11 @@ object LabRuntime {
         reportTask = object : Runnable {
             override fun run() {
                 if (!active) return
+                synchronized(this@LabRuntime) {
+                    val clockReady = node?.snapshot()?.clockReady == true
+                    if (clockWasReady && !clockReady) speaker?.invalidateTiming()
+                    clockWasReady = clockReady
+                }
                 writeReport(appContext)
                 main.postDelayed(this, 1000)
             }
@@ -148,11 +169,17 @@ object LabRuntime {
     fun snapshot(): JSONObject {
         val capture = CaptureBus.snapshot()
         val relay = node?.snapshot()
+        val timing = speaker?.timingSnapshot()
         return JSONObject().apply {
             put("diagnostic", true)
+            put("reportSequence", reportSequence)
+            put("observedAtNanos", System.nanoTime())
             put("sampleRate", 16000)
             put("frameMillis", 20)
-            put("synchronizedPlayback", false)
+            put("synchronizedPlayback", timing?.timingState == "playing" && relay?.clockReady == true)
+            put("acousticSyncVerified", false)
+            put("sourceOutputSynchronized", false)
+            put("playoutDelayMillis", 1500)
             put("active", active)
             put("receivedSession", receivedSession?.toString() ?: "")
             put("status", status)
@@ -173,19 +200,54 @@ object LabRuntime {
                 put("rejectedPeers", relay?.rejectedPeers ?: 0)
                 put("queuedFrames", relay?.queuedFrames ?: 0)
                 put("lastError", relay?.lastError ?: "")
+                put("timedFrames", relay?.timedFrames ?: 0)
+                put("unscheduledFrames", relay?.unscheduledFrames ?: 0)
+                put("clockReady", relay?.clockReady ?: false)
+                put("clockUncertaintyNanos", relay?.clockUncertaintyNanos ?: JSONObject.NULL)
+                put("clockAgeMillis", relay?.clockAgeMillis ?: JSONObject.NULL)
+                put("clockSamples", relay?.clockSamples ?: 0)
+                put("clockProbesSent", relay?.clockProbesSent ?: 0)
+                put("clockRepliesAccepted", relay?.clockRepliesAccepted ?: 0)
+                put("clockRepliesRejected", relay?.clockRepliesRejected ?: 0)
+                put("clockProbeTimeouts", relay?.clockProbeTimeouts ?: 0)
+                put("clockLastRoundTripNanos", relay?.clockLastRoundTripNanos ?: JSONObject.NULL)
+                put("clockLastElapsedNanos", relay?.clockLastElapsedNanos ?: JSONObject.NULL)
             })
             put("output", JSONObject().apply {
                 put("writtenBytes", speaker?.writtenBytes?.get() ?: 0)
                 put("playbackHeadFrames", speaker?.playbackHeadFrames ?: 0)
                 put("droppedFrames", speaker?.droppedFrames?.get() ?: 0)
+                put("timingState", timing?.timingState ?: "stopped")
+                put("scheduledStarts", timing?.scheduledStarts ?: 0)
+                put("lateFrames", timing?.lateFrames ?: 0)
+                put("resyncs", timing?.resyncs ?: 0)
+                put("uncertaintyNanos", timing?.uncertaintyNanos ?: JSONObject.NULL)
+                put("lastScheduledPlayNanos", timing?.lastScheduledPlayNanos ?: JSONObject.NULL)
+                put("startErrorNanos", timing?.startErrorNanos ?: JSONObject.NULL)
+                put("outputErrorNanos", timing?.outputErrorNanos ?: JSONObject.NULL)
+                put("outputLeadNanos", timing?.outputLeadNanos ?: 0)
+                put("queuedFrames", timing?.queuedFrames ?: 0)
+                put("insertedSilenceFrames", timing?.insertedSilenceFrames ?: 0)
             })
             put("sentPcm", sentProof.snapshot())
             put("receivedPcm", receivedProof.snapshot())
         }
     }
 
+    @Synchronized
     fun writeReport(context: Context) {
-        File(context.filesDir, "report.json").writeText(snapshot().toString(2))
+        val report = AtomicFile(File(context.filesDir, "report.json"))
+        var stream: java.io.FileOutputStream? = null
+        try {
+            reportSequence++
+            val bytes = snapshot().toString(2).toByteArray(Charsets.UTF_8)
+            stream = report.startWrite()
+            stream.write(bytes)
+            report.finishWrite(stream)
+        } catch (_: java.io.IOException) {
+            report.failWrite(stream)
+            status = "Could not save the diagnostic report"
+        }
     }
 }
 

@@ -13,6 +13,10 @@ android {
         versionCode = 1
         versionName = "0.1.0-lab"
     }
+    sourceSets {
+        getByName("main").java.setSrcDirs(emptyList<String>())
+        getByName("test").java.setSrcDirs(emptyList<String>())
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -24,6 +28,6 @@ kotlin {
 }
 
 dependencies {
-    implementation(project(":protocol"))
+    implementation(project(":core"))
     testImplementation("junit:junit:4.13.2")
 }

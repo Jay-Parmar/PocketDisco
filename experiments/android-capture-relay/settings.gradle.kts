@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "PocketDiscoCaptureLab"
-include(":protocol", ":lab", ":source")
+include(":protocol", ":core", ":lab", ":source")

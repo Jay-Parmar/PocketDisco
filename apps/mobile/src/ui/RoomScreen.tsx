@@ -11,6 +11,7 @@ import {
 import { Brand, Button, ErrorBanner } from './components';
 import { DemoPlayer } from './DemoPlayer';
 import { MembersCard } from './MembersCard';
+import { NearbyAudioCard } from './NearbyAudioCard';
 import { ChatComposer, MessageThread } from './RoomChat';
 import { colors } from './theme';
 import type { ConnectionStatus, RoomDetails } from './types';
@@ -199,6 +200,11 @@ export function RoomScreen({
               testID="ready-toggle-button"
             />
           </View>
+          <NearbyAudioCard
+            key={`nearby-${room.room_id}`}
+            roomId={room.room_id}
+            canOpen={!controlsDisabled}
+          />
           <DemoPlayer key={room.room_id} enabled={!busy && !!you} />
           <MessageThread
             messages={room.messages}
