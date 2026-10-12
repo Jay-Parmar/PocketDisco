@@ -167,6 +167,11 @@ export class RoomClient {
         const data = object(await this.http.request('POST', `/v1/rooms/${room.room_id}/leave`, {}));
         if (data.ok !== true) throw new ProtocolError();
         if (this.roomOperation === operation) this.clearRoom();
+        // The socket can report removed membership before the leave response arrives.
+        if (this.roomOperation === operation + 1 && this.state.snapshot === null
+          && ['not_a_member', 'not_member', 'room_unavailable', 'room_closed', 'room_not_found'].includes(this.state.error?.code ?? '')) {
+          this.update({error: null});
+        }
       } finally {
         if (this.roomOperation === operation) this.roomOperationActive = false;
       }
