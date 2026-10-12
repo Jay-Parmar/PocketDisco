@@ -20,12 +20,14 @@ android {
         versionName "0.1.0"
         buildConfigField "String", "API_URL", '"https://api.invalid"'
         buildConfigField "boolean", "ALLOW_LOCAL_SERVER", "false"
+        buildConfigField "boolean", "NEARBY_AUDIO_ENABLED", "false"
     }
 
     buildTypes {
         debug {
             applicationIdSuffix ".debug"
             buildConfigField "boolean", "ALLOW_LOCAL_SERVER", "true"
+            buildConfigField "boolean", "NEARBY_AUDIO_ENABLED", "true"
             buildConfigField "String", "API_URL", '"http://127.0.0.1:8000"'
             manifestPlaceholders = [usesCleartextTraffic: "true"]
         }
@@ -43,9 +45,21 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
     }
+    sourceSets {
+        debug {
+            java.srcDir 'src/nearby/java'
+            manifest.srcFile 'src/nearby/AndroidManifest.xml'
+        }
+        internal {
+            java.srcDir 'src/nearby/java'
+            manifest.srcFile 'src/nearby/AndroidManifest.xml'
+        }
+    }
 }
 
 dependencies {
+    debugImplementation(project(":core"))
+    internalImplementation(project(":core"))
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("com.facebook.react:react-android")
     implementation("com.facebook.react:hermes-android")
