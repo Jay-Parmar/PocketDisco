@@ -1,0 +1,11 @@
+gradle.projectsEvaluated {
+    def app = rootProject.findProject(":app")
+    if (app == null) return
+    def sharedClient = rootProject.file("../../../packages/domain/src/client.ts").canonicalFile
+    ["createBundleInternalJsAndAssets", "createBundleReleaseJsAndAssets"].each { name ->
+        def bundle = app.tasks.named(name).get()
+        if (!bundle.inputs.files.files.any { it.canonicalFile == sharedClient }) {
+            throw new GradleException("${name} does not track the shared room client")
+        }
+    }
+}

@@ -96,6 +96,10 @@ No command here stops or restarts another application's service.
 
 ## Local checks
 
+Public ingress is prepared separately in [https/](https/README.md). Its generator
+defaults to health-only access and untrusted staging certificates. It does not
+install a proxy or change this private deployment.
+
 ```sh
 python -m unittest discover -s infra/self-hosted/tests -v
 ```

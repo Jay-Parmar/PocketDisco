@@ -36,6 +36,44 @@ app and ignores clipped views before tapping.
 python -m unittest discover -s tools/mobile_e2e -v
 ```
 
+## Three devices and a deployed backend
+
+Use `rooms.py` for two physical phones and one emulator. It requires three
+explicit serials, with the room host first, and a healthy production backend
+already reachable through a local SSH tunnel. Install the internal APK and
+unlock all devices. Leave each at the launcher or the product welcome screen,
+with no saved room or personal form input. The saved app API address must be
+`http://127.0.0.1:8000`. The runner inspects it without changing it.
+
+```powershell
+python tools/mobile_e2e/rooms.py --adb .local-tools/android-sdk/platform-tools/adb.exe --device HOST_PHONE_SERIAL --device FRIEND_PHONE_SERIAL --device emulator-5554 --host-port 18080 --output .local-tools/mobile-rooms-three-new
+```
+
+The default host port is 18080. Existing device port 8000 mappings must already
+point there; conflicting mappings stop the run. Missing mappings are created
+with `--no-rebind` and removed afterward. Matching preconfigured mappings are
+preserved. The offline check temporarily removes one device's mapping and
+restores it even if the UI check fails, without replacing a conflicting mapping
+created by another process.
+
+The test creates one room, joins both other devices, checks presence and
+readiness on all three, exchanges chat, backgrounds one member, restarts the
+host process, and retries a saved room after an offline cold start. Successful
+runs leave both guests first and the host last through the UI. Guest accounts,
+chat and the closed room remain on the backend. Failed runs may leave the test
+room open for inspection; leave it manually before trying again.
+
+No app data is cleared. An unexpected foreground app, saved room, server
+address or non-test draft stops the run. UI polling is bounded to 30 seconds
+per check, ADB commands to 35 seconds, health requests to 5 seconds, and new UI
+checks stop after 15 minutes. A pending bounded command may finish afterward.
+Results contain fixed outcomes and UTC timestamps only, without screenshots,
+UI dumps, invite codes, tokens, device serials or raw exceptions. Use a new
+directory under the repository's ignored `.local-tools` folder each time.
+
+This checks the deployed room control plane through the tunnel. It does not
+test public HTTPS, independent mobile networks, music playback or audio sync.
+
 ## Internal nearby handoff
 
 Install the internal product and Test Source on a USB phone, and Capture Lab

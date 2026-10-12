@@ -64,13 +64,89 @@ Sanitized reports are under `.local-tools/remote-api-smoke/`,
 `.local-tools/mobile-e2e-playback-20261008/`.
 Screenshots may contain synthetic invites and are not committed.
 
+## Connection recovery: 2026-10-12
+
+The API and both datastores are still healthy on the installed runtime above.
+The API has reported no automatic restarts since its October 8 start. Backend
+code has not changed since that deployment, so no reinstall, migration or
+datastore restart was needed.
+
+The internal app was pointing at device loopback while the development tunnel
+and ADB reverse mappings were stopped. Restoring an SSH forward from PC
+`127.0.0.1:18080` to server `127.0.0.1:18080`, then mapping each selected
+device's port 8000 to PC port 18080, restored the private connection. Nothing
+and the emulator resumed their existing server rooms without clearing data.
+This route depends on the PC, USB/ADB and the SSH process staying connected.
+It is not the public endpoint or an offline backend.
+
+All nine remote room checks passed again. The sanitized report is
+`.local-tools/remote-api-smoke/deployment-20261012-1.json`. Local API regression
+tests passed 108 checks with eight real-datastore tests skipped. The remote
+smoke exercises the deployed PostgreSQL and Redis, but is not a substitute for
+the full integration suite.
+
+The router serving `satark` should forward TCP 80 and 443 to its verified LAN
+address, `192.168.5.187`, on the same destination ports. Reserve that address.
+Do not forward port 18080, SSH or datastore ports. No listener was present on
+80 or 443 at this check; forwarding alone does not provide HTTPS.
+
+An owned hostname remains preferable for a stable app endpoint, but is not
+mandatory for a static public IP. Let's Encrypt now supports IPv4 and IPv6
+certificates with a 160-hour lifetime and the `shortlived` ACME profile.
+An IP endpoint therefore needs tested automatic renewal and certificate-expiry
+monitoring before use. This updates the earlier hostname-only ingress gate,
+not the control-plane architecture. See the
+[official January 2026 announcement](https://letsencrypt.org/2026/01/15/6day-and-ip-general-availability).
+The observed outbound address is not proof that incoming router traffic reaches
+this server. Public forwarding, certificate issuance and independent-network
+phone access remain unverified.
+
+The [restricted HTTPS preparation](../infra/self-hosted/https/README.md) uses
+pinned Caddy 2.11.7, isolated service state, exact tester-IP admission and
+request-free logs. Its 18 generator tests and all four health-only/allowlisted,
+staging/production configuration variants pass local parser checks with the
+checksum-verified binary. This is preparation only: no proxy service, certificate,
+trusted-proxy override or public mobile endpoint has been installed.
+
+## Restricted external ports: 2026-10-12
+
+The owner reports forwarding public ports 50080 and 50443. Public 80 and 443
+cannot be forwarded. This supersedes the standard-port activation request
+above; do not keep requesting those ports or expose the raw API as a fallback.
+The exact LAN destination ports and router WAN address still need confirmation.
+Router rules target the server's LAN address, not its public address.
+
+At 15:54 UTC the server still had LAN address `192.168.5.187`, outbound public
+address `117.252.78.56`, and a healthy API on `127.0.0.1:18080`. All three
+PocketDisco units were active with zero restarts. There were no listeners on
+80, 443, 50080 or 50443. TCP probes from the development PC to the two public
+high ports did not connect. With no ingress listener, this does not establish
+whether the router rules are correct. No services or firewall rules were changed.
+
+HTTPS/WSS can use port 50443, but the prepared IP-certificate flow cannot
+validate through these high ports: Let's Encrypt HTTP-01 requires public 80,
+TLS-ALPN-01 requires public 443, and DNS-01 cannot validate IP addresses.
+Use an owner-controlled hostname with DNS-01 and automated renewal instead.
+The intended app origin is `https://HOSTNAME:50443`, once DNS, certificate and
+external access are verified. A certificate is for the hostname, not the port.
+See [challenge requirements](https://letsencrypt.org/docs/challenge-types/)
+and [Caddy DNS validation](https://caddyserver.com/docs/automatic-https#dns-challenge).
+
+Next input is a hostname and DNS provider, not a password or API key in chat.
+Review scoped DNS credentials and renewal support before choosing an ACME
+integration. The existing unmodified-Caddy template supports neither this DNS
+flow nor an activated public endpoint yet. Do not deploy it unchanged, disable
+certificate checks, install a test CA on phones, or move guest traffic to HTTP.
+Port 50080 is not needed for DNS-01 and must not serve API credentials or chat.
+
 ## Before public access
 
 1. Confirm the public router can reach the Linux server. The development PC and
    server currently use different LAN subnets; forwarding to the wrong one will
    not expose this backend. Do not install an unapproved relay on the PC.
-2. Select an owned API hostname and configure DNS and HTTPS/WSS ingress. Normal
-   direct ingress uses TCP 443, with TCP 80 for HTTP certificate validation.
+2. Under the current high-port constraint, select an owner-controlled hostname
+   and DNS provider, then configure DNS-01 renewal and HTTPS/WSS on public
+   port 50443. Confirm which LAN port that rule reaches before binding ingress.
    Never forward SSH, either datastore, or the internal API port.
 3. Set proxy body/header timeouts, connection limits and token-safe logs. Trust
    only the actual proxy peer. The API currently trusts no forwarded headers.

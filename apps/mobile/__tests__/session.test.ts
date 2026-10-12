@@ -36,6 +36,41 @@ test('allows a local server only in internal builds', () => {
   ).toThrow();
 });
 
+test('restores a selected server before a guest session exists', () => {
+  const record = {
+    baseUrl: 'https://rooms.example.com',
+    session: null,
+    roomId: null,
+    inviteCode: null,
+  };
+  expect(
+    readSavedSession(JSON.stringify(record), 'https://example.com', true),
+  ).toEqual(record);
+});
+
+test('does not restore another production server without credentials', () => {
+  expect(() =>
+    readSavedSession(
+      JSON.stringify({ baseUrl: 'https://other.example', session: null }),
+      'https://example.com',
+      false,
+    ),
+  ).toThrow();
+});
+
+test.each([
+  { roomId: '20000000-0000-4000-8000-000000000001', inviteCode: null },
+  { roomId: null, inviteCode: '0123456789AB' },
+])('rejects saved room details without a session %p', room => {
+  expect(() =>
+    readSavedSession(
+      JSON.stringify({ baseUrl: 'https://example.com', session: null, ...room }),
+      'https://example.com',
+      true,
+    ),
+  ).toThrow();
+});
+
 test('does not send a stored session to a changed production server', () => {
   expect(() =>
     readSavedSession(

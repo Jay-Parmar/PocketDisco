@@ -6,7 +6,7 @@ import type { Session } from '../../../packages/domain/src/types';
 
 export type SavedSession = {
   baseUrl: string;
-  session: Session;
+  session: Session | null;
   roomId: string | null;
   inviteCode: string | null;
 };
@@ -37,9 +37,16 @@ export function readSavedSession(
   ) {
     throw new Error('Invalid saved server.');
   }
+  const session = record.session === null ? null : parseSession(record.session);
+  if (
+    session === null &&
+    (record.roomId != null || record.inviteCode != null)
+  ) {
+    throw new Error('Invalid saved room.');
+  }
   return {
     baseUrl: record.baseUrl,
-    session: parseSession(record.session),
+    session,
     roomId:
       typeof record.roomId === 'string' &&
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
@@ -48,6 +55,8 @@ export function readSavedSession(
         ? record.roomId
         : null,
     inviteCode:
-      record.inviteCode === null ? null : parseInviteCode(record.inviteCode),
+      session === null || record.inviteCode === null
+        ? null
+        : parseInviteCode(record.inviteCode),
   };
 }

@@ -6,6 +6,13 @@ react {
     autolinkLibrariesWithApp()
 }
 
+tasks.withType(com.facebook.react.tasks.BundleHermesCTask).configureEach {
+    inputs.files(fileTree(rootProject.file("../../../packages/domain/src")) {
+        include "**/*.ts"
+    }).withPropertyName("sharedDomainSources")
+      .withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
 android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion

@@ -5,6 +5,8 @@ import type { ClientState } from '../../../packages/domain/src/types';
 import DeviceSession from './native/NativeDeviceSession';
 import { readSavedSession } from './session';
 
+type LocalError = { message: string; connectionClient?: RoomClient };
+
 function message(error: unknown) {
   return error instanceof Error
     ? error.message
@@ -45,7 +47,7 @@ export function useMobileRoom() {
     null,
   );
   const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<LocalError | null>(null);
   const [dismissedError, setDismissedError] =
     useState<ClientState['error']>(null);
   const unsubscribe = useRef(() => {});
@@ -73,7 +75,19 @@ export function useMobileRoom() {
     hadSnapshot.current = false;
   }
 
-  function persist(next: ClientState): Promise<void> {
+  function connectionFailed(client: RoomClient, failure: unknown) {
+    if (!active.current || client !== clientRef.current) return;
+    setError(current =>
+      current && !current.connectionClient
+        ? current
+        : { message: message(failure), connectionClient: client },
+    );
+  }
+
+  function persist(
+    next: ClientState,
+    url = currentUrl.current,
+  ): Promise<void> {
     if (hydrating.current) return Promise.resolve();
     if (next.session === null || roomUnavailable(next.error)) {
       clearSavedRoom();
@@ -84,28 +98,25 @@ export function useMobileRoom() {
     } else if (hadSnapshot.current) {
       clearSavedRoom();
     }
-    const record = next.session
-      ? JSON.stringify({
-          baseUrl: currentUrl.current,
-          session: next.session,
-          roomId: savedRoomId.current,
-          inviteCode: savedInvite.current,
-        })
-      : null;
+    const record = JSON.stringify({
+      baseUrl: url,
+      session: next.session,
+      roomId: savedRoomId.current,
+      inviteCode: savedInvite.current,
+    });
     if (record === lastQueued.current) return writes.current;
     lastQueued.current = record;
     const operation = writes.current
       .catch(() => {})
-      .then(() =>
-        record === null ? DeviceSession.clear() : DeviceSession.save(record),
-      );
+      .then(() => DeviceSession.save(record));
     writes.current = operation;
     operation.catch(() => {
       if (lastQueued.current === record) lastQueued.current = undefined;
       if (active.current)
-        setError(
-          'Could not save your session securely. Keep the app open and retry.',
-        );
+        setError({
+          message:
+            'Could not save your session securely. Keep the app open and retry.',
+        });
     });
     return operation;
   }
@@ -121,6 +132,10 @@ export function useMobileRoom() {
       if (!active.current || client !== clientRef.current) return;
       persist(next).catch(() => {});
       setState(next);
+      if (next.connection === 'connected' && next.error === null)
+        setError(current =>
+          current?.connectionClient === client ? null : current,
+        );
     });
   }
 
@@ -180,8 +195,7 @@ export function useMobileRoom() {
         client.disconnect();
       } else {
         connectCurrent(client).catch(failure => {
-          if (isCurrent() && client === clientRef.current)
-            setError(message(failure));
+          if (isCurrent()) connectionFailed(client, failure);
         });
       }
     });
@@ -200,19 +214,23 @@ export function useMobileRoom() {
           savedInvite.current = restored.inviteCode;
           hadSnapshot.current = false;
           attach(client, restored.baseUrl);
-          client.restoreSession(restored.session);
+          if (restored.session) client.restoreSession(restored.session);
         }
         hydrating.current = false;
         await persist(clientRef.current!.getState());
         if (!isCurrent()) return;
         readyToResume.current = true;
-        await connectCurrent(clientRef.current!);
+        const client = clientRef.current!;
+        await connectCurrent(client).catch(failure => {
+          if (isCurrent()) connectionFailed(client, failure);
+        });
       })
       .catch(() => {
         if (isCurrent())
-          setError(
-            'Could not reopen your last session. Check your connection or join again.',
-          );
+          setError({
+            message:
+              'Could not reopen your last session. Check your connection or join again.',
+          });
       })
       .finally(async () => {
         if (!isCurrent()) return;
@@ -235,15 +253,17 @@ export function useMobileRoom() {
   async function run<T>(
     kind: 'creating' | 'joining' | 'room',
     task: () => Promise<T>,
+    connectionClient?: RoomClient,
   ): Promise<T | undefined> {
     if (actionPending.current || booting) return;
     actionPending.current = true;
     setBusy(kind);
-    setError(null);
+    if (!connectionClient) setError(null);
     try {
       return await task();
     } catch (failure) {
-      if (active.current) setError(message(failure));
+      if (connectionClient) connectionFailed(connectionClient, failure);
+      else if (active.current) setError({ message: message(failure) });
     } finally {
       actionPending.current = false;
       if (active.current) setBusy(null);
@@ -271,7 +291,7 @@ export function useMobileRoom() {
       state.session !== null &&
       state.snapshot === null,
     error:
-      error ??
+      error?.message ??
       (state.error === dismissedError ? null : state.error?.message) ??
       null,
     showServerSettings: settings.allowLocalServer,
@@ -301,14 +321,17 @@ export function useMobileRoom() {
       }),
     setReady: (ready: boolean) =>
       run('room', () => clientRef.current!.setReady(ready)),
-    retry: () => run('room', () => connectCurrent(clientRef.current!)),
+    retry: () => {
+      const client = clientRef.current!;
+      return run('room', () => connectCurrent(client), client);
+    },
     send: async (body: string) => {
       setSending(true);
       setError(null);
       try {
         await clientRef.current!.sendChat(body);
       } catch (failure) {
-        if (active.current) setError(message(failure));
+        if (active.current) setError({ message: message(failure) });
         throw failure;
       } finally {
         if (active.current) setSending(false);
@@ -319,10 +342,19 @@ export function useMobileRoom() {
         if (url === currentUrl.current) return true;
         if (!settings.allowLocalServer) return false;
         const nextClient = createClient(url);
-        clientRef.current!.signOut();
+        const previousClient = clientRef.current!;
+        const previousUrl = currentUrl.current;
+        unsubscribe.current();
+        previousClient.signOut();
         clearSavedRoom();
-        await persist(clientRef.current!.getState());
-        attach(nextClient, url);
+        setState(previousClient.getState());
+        try {
+          await persist(nextClient.getState(), url);
+          attach(nextClient, url);
+        } catch (failure) {
+          attach(previousClient, previousUrl);
+          throw failure;
+        }
         return true;
       })) === true,
   };

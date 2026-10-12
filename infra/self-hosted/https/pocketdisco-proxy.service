@@ -1,0 +1,51 @@
+[Unit]
+Description=PocketDisco restricted HTTPS ingress
+Wants=network-online.target
+After=network-online.target pocketdisco-api.service
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=notify
+User=pocketdisco-proxy
+Group=pocketdisco-proxy
+WorkingDirectory=/var/lib/pocketdisco-proxy
+StateDirectory=pocketdisco-proxy
+StateDirectoryMode=0700
+RuntimeDirectory=pocketdisco-proxy
+RuntimeDirectoryMode=0700
+ExecStart=/opt/pocketdisco/bin/caddy-2.11.7 run --config /etc/pocketdisco/ingress/Caddyfile --adapter caddyfile
+ExecReload=/opt/pocketdisco/bin/caddy-2.11.7 reload --config /etc/pocketdisco/ingress/Caddyfile --adapter caddyfile --address unix//run/pocketdisco-proxy/admin.sock
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=30
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectProc=invisible
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+MemoryDenyWriteExecute=true
+InaccessiblePaths=/etc/pocketdisco/api.env /etc/pocketdisco/migrate.env /etc/pocketdisco/redis.acl /var/lib/pocketdisco
+MemoryMax=256M
+CPUQuota=50%
+TasksMax=64
+LimitNOFILE=2048
+LimitCORE=0
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=100
+
+[Install]
+WantedBy=multi-user.target

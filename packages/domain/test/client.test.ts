@@ -235,6 +235,90 @@ test('leave clears membership only after the server accepts', async t => {
   assert.deepEqual(client.getState().session, session());
 });
 
+for (const notification of ['not_a_member', 'room_unavailable', 'close'] as const) {
+  test(`successful leave clears its earlier ${notification} socket error`, async t => {
+    let release!: () => void;
+    const barrier = new Promise<void>(resolve => {release = resolve;});
+    const {client, connect, timers} = setup(t, async url => {
+      if (url.endsWith('/leave')) await barrier;
+      return undefined;
+    });
+    await client.createRoom('Evening room');
+    const socket = connect();
+    const leaving = client.leaveRoom();
+    await settle();
+    if (notification === 'close') socket.lose(4403);
+    else socket.receive({v: 1, type: 'error', payload: {code: notification, message: 'Membership ended.'}});
+    assert.notEqual(client.getState().error, null);
+    release();
+    await leaving;
+    assert.equal(client.getState().snapshot, null);
+    assert.equal(client.getState().inviteCode, null);
+    assert.equal(client.getState().connection, 'offline');
+    assert.equal(client.getState().error, null);
+    assert.equal(timers.pending.size, 0);
+    assert.deepEqual(client.getState().session, session());
+  });
+}
+
+test('successful leave keeps an unrelated error received before its response', async t => {
+  let release!: () => void;
+  const barrier = new Promise<void>(resolve => {release = resolve;});
+  const {client, connect} = setup(t, async url => {
+    if (url.endsWith('/leave')) await barrier;
+    return undefined;
+  });
+  await client.createRoom('Evening room');
+  const socket = connect();
+  const leaving = client.leaveRoom();
+  await settle();
+  socket.receive({v: 1, type: 'error', payload: {code: 'rate_limited', message: 'Please wait.'}});
+  release();
+  await leaving;
+  assert.equal(client.getState().snapshot, null);
+  assert.equal(client.getState().error?.code, 'rate_limited');
+});
+
+test('a late leave response does not clear a newer room membership error', async t => {
+  let release!: () => void;
+  const barrier = new Promise<void>(resolve => {release = resolve;});
+  const {client, connect, sockets} = setup(t, async url => {
+    if (url.endsWith('/leave')) await barrier;
+    if (url.endsWith(`/${otherRoomId}/snapshot`)) return response({...snapshot(3), room_id: otherRoomId});
+    return undefined;
+  });
+  await client.createRoom('Evening room');
+  const socket = connect();
+  const leaving = client.leaveRoom();
+  await settle();
+  socket.lose(4403);
+  await client.resumeRoom(otherRoomId);
+  sockets.at(-1)!.lose(4403);
+  const newerError = client.getState().error;
+  assert.equal(newerError?.code, 'room_unavailable');
+  release();
+  await leaving;
+  assert.equal(client.getState().error, newerError);
+});
+
+test('a failed leave remains an error after the room socket has closed', async t => {
+  let release!: () => void;
+  const barrier = new Promise<void>(resolve => {release = resolve;});
+  const {client, connect} = setup(t, async url => {
+    if (!url.endsWith('/leave')) return undefined;
+    await barrier;
+    return response({detail: {code: 'unavailable', message: 'Try again later.'}}, 503);
+  });
+  await client.createRoom('Evening room');
+  const socket = connect();
+  const leaving = client.leaveRoom();
+  await settle();
+  socket.lose(4403);
+  release();
+  await assert.rejects(leaving, {code: 'unavailable'});
+  assert.equal(client.getState().error?.code, 'unavailable');
+});
+
 test('a failed leave preserves the room for retry', async t => {
   const {client, connect} = setup(t, async url => url.endsWith('/leave')
     ? response({detail: {code: 'unavailable', message: 'Try again later.'}}, 503) : undefined);

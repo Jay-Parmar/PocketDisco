@@ -1,0 +1,78 @@
+{
+	admin unix//run/pocketdisco-proxy/admin.sock
+	persist_config off
+	default_bind 192.168.5.187
+	default_sni @PUBLIC_IP@
+	auto_https disable_redirects
+	grace_period 15s
+	storage file_system /var/lib/pocketdisco-proxy/tls
+
+	log default {
+		output stderr
+		format json
+		level INFO
+		exclude http admin.api
+	}
+
+	servers {
+		protocols h1 h2
+		max_header_size 16KiB
+		timeouts {
+			read_header 5s
+			read_body 10s
+			read_body_idle 5s
+			write_idle 30s
+			idle 60s
+		}
+	}
+}
+
+(pocketdisco_backend) {
+	reverse_proxy 127.0.0.1:18080 {
+		header_up -Forwarded
+		header_up -X-Real-IP
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto https
+		unhealthy_request_count 64
+		transport http {
+			versions 1.1
+			network_proxy none
+			dial_timeout 3s
+			response_header_timeout 10s
+			max_response_header 16KiB
+			max_conns_per_host 64
+			keepalive 4s
+			keepalive_idle_conns 8
+			keepalive_idle_conns_per_host 8
+		}
+	}
+}
+
+http:// {
+	respond 404
+}
+
+https://@PUBLIC_IP@ {
+	tls {
+		issuer acme {
+			dir @ACME_DIRECTORY@
+			profile shortlived
+			disable_tlsalpn_challenge
+		}
+	}
+
+	request_body {
+		max_size 8KiB
+	}
+	@health {
+		path /healthz
+		method GET
+	}
+	handle @health {
+		import pocketdisco_backend
+	}
+	@ROOM_ROUTE@
+	handle {
+		respond 404
+	}
+}
