@@ -7,6 +7,7 @@
 | Android first, foreground first | Reduces lifecycle variables and matches the desired first platform |
 | Android product development authorized on 2026-10-07 | Private-room implementation can proceed while acoustic and rights gates remain open for release |
 | Desktop work paused on 2026-10-07 | Current priority is the end-to-end Android product and UI |
+| Separate capture relay lab authorized on 2026-10-12 | Test explicit-consent capture and bounded relaying with generated audio; keep product architecture and provider approval gates unchanged. See the [checkpoint](12-capture-relay-checkpoint.md) for evidence and open hardware tests |
 | React Native UI + Kotlin playback core | Uses current skills without putting precise scheduling on JavaScript timers |
 | FastAPI modular monolith | Familiar stack and adequate for MVP; easier correctness than early services |
 | PostgreSQL + Redis | Durable product data plus low-latency expiring room state/fan-out |
