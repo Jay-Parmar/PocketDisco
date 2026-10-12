@@ -1,17 +1,120 @@
 # Capture relay lab
 
-Internal Android diagnostic, separate from the PocketDisco product app. Nothing here enables a stock phone to become an ordinary Bluetooth speaker.
+Internal Android 10+ diagnostic, separate from the PocketDisco product app. It
+does not turn a stock phone into an ordinary Bluetooth speaker. Test only
+generated audio or audio you have permission to transmit.
 
-This experiment tests user-approved playback capture and bounded PCM relaying. Test only generated audio or audio you have permission to transmit. Source apps can block capture. No microphone fallback, protected-stream extraction, music-app patching, server audio relay, or provider approval is included.
+The lab captures playback from one selected app UID after Android consent.
+Source capture restrictions remain in force. There is no microphone fallback,
+screen recording, music-app patching, protected-stream extraction, backend
+audio relay or provider integration approval.
 
-The first test uses a USB-forwarded TCP connection from a physical phone to the emulator. Paired Bluetooth sockets are a separate hardware test. Emulator results do not establish physical Bluetooth connectivity, range, multi-hop performance, or audible synchronization. Capture does not delay the original source speaker, so receivers will lag it.
+Audio is fixed 16 kHz, mono, PCM16 little-endian in 20 ms frames. This is a
+low-fidelity transport diagnostic, not synchronized music playback. Capture
+does not delay the original speaker, so receivers lag it. Each node allows
+three pending or active direct links and forwards at most three hops. There
+is no automatic discovery or unrestricted mesh.
 
 ## Build
 
-Use the repository's JDK 17, Android SDK and Gradle cache. From the repository root:
+Use JDK 17, Android platform 37 and build tools 37.0.0. Point `JAVA_HOME`,
+`ANDROID_HOME`, `ANDROID_USER_HOME` and `GRADLE_USER_HOME` at the repository's
+local tools. The mobile wrapper supplies Gradle 9.5.0. From the repository root:
 
 ```powershell
-apps/mobile/android/gradlew.bat -p experiments/android-capture-relay :protocol:test :lab:assembleDebug :source:assembleDebug
+apps/mobile/android/gradlew.bat -p experiments/android-capture-relay :protocol:test :lab:testDebugUnitTest :source:testDebugUnitTest :lab:lintDebug :source:lintDebug :lab:assembleDebug :source:assembleDebug --max-workers=2 --console=plain
 ```
 
-Packages are `com.pocketdisco.capturelab` and `com.pocketdisco.capturelab.source`. Do not upload these debug diagnostics to Play. They do not replace PocketDisco or the installed music app.
+Use `bash apps/mobile/android/gradlew` instead on Linux. No React Native or
+Metro setup is needed for these apps.
+
+| App | Package | APK, relative to this directory |
+|---|---|---|
+| Capture Lab | `com.pocketdisco.capturelab` | `lab/build/outputs/apk/debug/lab-debug.apk` |
+| Test Source | `com.pocketdisco.capturelab.source` | `source/build/outputs/apk/debug/source-debug.apk` |
+
+These are debug diagnostics, not Play artifacts. They do not replace
+PocketDisco or the installed music app. Install Capture Lab on every test
+phone and Test Source on the sending phone. The [source notes](source/README.md)
+describe the generated tone and bundled MP3 provenance.
+
+## Three-phone paired-Bluetooth check
+
+Use three physical phones, called A, B and C. Start with quiet volumes and
+keep receiver screens open. Backgrounding a receiver stops its session.
+
+1. Pair A with B, then B with C in Android Bluetooth settings.
+2. On A, tap **New session code**. Copy its 32 hexadecimal characters
+   (128 random bits) into the session-code field on B and C. Share the code
+   only with the test participants.
+3. On A, tap **Host paired Bluetooth**. On B, tap **Receive paired Bluetooth**
+   and select A. Accept Bluetooth permission if requested.
+4. On B, also tap **Host paired Bluetooth**. On C, tap **Receive paired
+   Bluetooth** and select B. **Refresh metrics** should show one peer on A,
+   two on B and one on C before capture starts.
+5. On A, select **Generated source**, tap **Start capture** and approve
+   Android's audio/screen consent. Tap **Open generated source**, then
+   **Play allowed**. B and C should receive the generated tone through the
+   selected chain. Refresh their metrics and note drop counters and errors.
+6. Try **Play blocked** on A's Test Source. The tone still plays locally, but
+   capture should become silent. Silence alone is not proof of a policy
+   block: a paused or unavailable source can also be silent.
+7. Tap **Stop session** in each Capture Lab and **Stop** in Test Source.
+   Stopping capture does not control or stop the original music app.
+
+Do not start capture on B or C during this one-source check. Reconnect through
+the receive button after a lost link. Create a fresh code after stopping all
+sessions when changing participants. Keep this first check within normal
+Bluetooth range; range and audible-delay measurements are separate tests.
+
+The optional **Music app local test file** source selects the installed
+`app.revanced.android.apps.youtube.music` UID. The companion's **Open generated
+file in music app** button opens only the bundled generated MP3. It does not
+open the provider's catalog. A successful local-file test would not establish
+permission or support for capturing catalog music.
+
+## Phone-to-emulator USB/TCP check
+
+This substitutes USB-forwarded TCP for Bluetooth. It does not validate a
+physical radio link, range, multi-hop radio performance or audible sync.
+
+First check `adb forward --list`. If port 18990 is already used, leave that
+mapping alone. Otherwise, create a mapping for the sending phone:
+
+```powershell
+adb -s PHONE_SERIAL forward --no-rebind tcp:18990 tcp:18990
+```
+
+Use the same session code on the phone and emulator. Tap **Host USB/TCP test**
+on the phone and **Receive USB/TCP test** on the emulator. The phone listener
+binds only `127.0.0.1:18990`; the emulator connects through the PC at
+`10.0.2.2:18990`. Do not forward this port on the router or expose it publicly.
+Wait for both peers before starting the generated-source capture above.
+
+After stopping both sessions, remove only the mapping created for this test:
+
+```powershell
+adb -s PHONE_SERIAL forward --remove tcp:18990
+```
+
+## Metrics and privacy
+
+**Refresh metrics** and **Stop session** write an app-private `files/report.json`.
+It contains frame counts, peaks, hashes, relay state and output progress, not
+raw audio or the join code. Raw captured PCM stays in bounded memory queues
+and is never saved or uploaded. The generated files in Test Source are not
+recordings of captured audio.
+
+The code is retained in app-private preferences until changed. Use a new code
+for a new group and do not include it in screenshots, issues or test reports.
+For a locally installed debug build, read the latest report with:
+
+```powershell
+adb -s DEVICE_SERIAL shell run-as com.pocketdisco.capturelab cat files/report.json
+```
+
+Compare the first-100-frame hashes only when peers joined before capture and
+the same frame window arrived without drops. Late joins and reconnects can
+produce different windows. AudioTrack progress demonstrates output activity,
+not measured sound at the speakers. CI runs JVM tests, lint and builds only;
+physical Bluetooth and acoustic results must be recorded separately.
