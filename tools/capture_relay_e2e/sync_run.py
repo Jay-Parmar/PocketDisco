@@ -16,6 +16,16 @@ else:
 REVERSE_PORT = "tcp:18991"
 
 
+def sample_count(value):
+    try:
+        count = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("Use 8 to 600 samples") from None
+    if not 8 <= count <= 600:
+        raise argparse.ArgumentTypeError("Use 8 to 600 samples")
+    return count
+
+
 class QuietPlayback:
     def __init__(self, device):
         self.device, self.previous = device, None
@@ -104,6 +114,48 @@ def advancing_timing(report, previous):
             and report["output"]["writtenBytes"] > previous["output"]["writtenBytes"])
 
 
+def stable_counters(report, baseline, label):
+    groups = {
+        "relay": ("peers", "droppedFrames"),
+        "output": ("scheduledStarts", "resyncs", "droppedFrames", "lateFrames", "insertedSilenceFrames"),
+    }
+    for group, fields in groups.items():
+        for field in fields:
+            if report[group][field] != baseline[group][field]:
+                raise AssertionError(f"{label}: {group}.{field} changed during sampling")
+
+
+def sustained_timing(report, previous, baseline, label):
+    stable_counters(report, baseline, label)
+    if not timing_proof(report):
+        raise AssertionError(f"{label}: scheduled output lost its timing bounds")
+    if report["reportSequence"] < previous["reportSequence"]:
+        raise AssertionError(f"{label}: report sequence restarted during sampling")
+    return (advancing_timing(report, previous)
+            and report["output"]["playbackHeadFrames"] > previous["output"]["playbackHeadFrames"]
+            and report["receivedPcm"]["nonSilentFrames"] > previous["receivedPcm"]["nonSilentFrames"])
+
+
+def advancing_source(report, previous, baseline):
+    stable_counters(report, baseline, "source")
+    if not report["capture"]["running"]:
+        raise AssertionError("Source capture stopped during sampling")
+    if report["reportSequence"] < previous["reportSequence"]:
+        raise AssertionError("Source report sequence restarted during sampling")
+    return (report["reportSequence"] > previous["reportSequence"]
+            and report["capture"]["frames"] > previous["capture"]["frames"]
+            and report["capture"]["nonSilentFrames"] > previous["capture"]["nonSilentFrames"]
+            and report["relay"]["publishedFrames"] > previous["relay"]["publishedFrames"])
+
+
+def read_final_reports(devices, checks):
+    for device in devices:
+        try:
+            device.latest = deepcopy(device.report())
+        except Exception:
+            checks.append({"name": f"{device.label} final report", "result": "failed"})
+
+
 def stop_devices(devices, source, music_file, checks):
     for device in devices:
         try:
@@ -119,7 +171,7 @@ def stop_devices(devices, source, music_file, checks):
                 checks.append({"name": f"{device.label} app cleanup", "result": "failed"})
 
 
-def exercise(source, receivers, transport, peer_name, music_file, passed):
+def exercise(source, receivers, transport, peer_name, music_file, passed, samples=8, observations=None):
     code = secrets.token_hex(16)
     for device in (source, *receivers):
         device.launch()
@@ -160,19 +212,28 @@ def exercise(source, receivers, transport, peer_name, music_file, passed):
     for device in receivers:
         audio_proof(source, device)
     passed("matching generated audio on both receivers")
-    samples = []
-    for _ in range(8):
+    baseline = {source.label: deepcopy(source.report())}
+    for device in receivers:
+        baseline[device.label] = deepcopy(device.wait_report(timing_proof, timeout=5))
+    previous = deepcopy(baseline)
+    observations = observations if observations is not None else []
+    for _ in range(samples):
         time.sleep(1)
-        sample = {}
+        source_report = source.wait_report(
+            lambda r: advancing_source(r, previous[source.label], baseline[source.label]), timeout=5)
+        sample = {"atUtc": utc_now(), "source": deepcopy(source_report), "receivers": {}}
+        observations.append(sample)
+        previous[source.label] = deepcopy(source_report)
         for device in receivers:
-            previous = deepcopy(device.latest)
-            report = device.wait_report(lambda r: advancing_timing(r, previous), timeout=5)
-            sample[device.label] = {key: deepcopy(report[key]) for key in ("reportSequence", "relay", "output")}
-        samples.append({"atUtc": utc_now(), "receivers": sample})
-    passed("sustained scheduled output on both receivers", samples=samples)
+            report = device.wait_report(
+                lambda r: sustained_timing(r, previous[device.label], baseline[device.label], device.label), timeout=5)
+            sample["receivers"][device.label] = {
+                key: deepcopy(report[key]) for key in ("reportSequence", "relay", "output", "receivedPcm")}
+            previous[device.label] = deepcopy(report)
+    passed("sustained scheduled output on both receivers", baseline=baseline, samples=observations)
 
 
-def main():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--adb", required=True)
     parser.add_argument("--source", required=True)
@@ -180,20 +241,30 @@ def main():
     parser.add_argument("--transport", choices=("usb", "mixed"), default="usb")
     parser.add_argument("--peer-name")
     parser.add_argument("--music-file", action="store_true")
+    parser.add_argument("--samples", type=sample_count, default=8,
+                        help="Fresh timing samples per receiver (8 to 600; default: 8)")
     parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if len(args.receiver) != 2 or len(set([args.source, *args.receiver])) != 3:
         parser.error("Use one source and two distinct receivers")
     if args.transport == "mixed" and (not args.peer_name or not args.receiver[1].startswith("emulator-")):
         parser.error("Mixed transport needs the source's paired name and an emulator as the second receiver")
+    if args.music_file and args.samples > 8:
+        parser.error("More than 8 samples requires the continuous generated tone, not --music-file")
+    return args
+
+
+def main():
+    args = parse_args()
     root = Path(__file__).resolve().parents[2]
     output = args.output.resolve()
     if not output.is_relative_to(root) or (output / "results.json").exists():
-        parser.error("Use a new output directory inside the repository")
+        raise SystemExit("Use a new output directory inside the repository")
     output.mkdir(parents=True, exist_ok=True)
     source = Device(args.adb, args.source, "source")
     receivers = [Device(args.adb, serial, f"receiver{index + 1}") for index, serial in enumerate(args.receiver)]
     devices, checks, touched = [source, *receivers], [], []
+    observations = []
     started_at = utc_now()
 
     def passed(name, **evidence):
@@ -217,15 +288,19 @@ def main():
                     touched.append(device)
                     for package in (LAB, SOURCE):
                         device.command("shell", "am", "force-stop", package)
-                exercise(source, receivers, args.transport, args.peer_name, args.music_file, passed)
+                exercise(source, receivers, args.transport, args.peer_name, args.music_file, passed,
+                         samples=args.samples, observations=observations)
             finally:
+                read_final_reports(touched, checks)
                 stop_devices(touched, source, args.music_file, checks)
     except Exception as error:
         checks.append({"name": "run", "result": "failed", "error": str(error)})
         print(f"FAIL {error}", flush=True)
     finally:
         result = {"startedAtUtc": started_at, "finishedAtUtc": utc_now(), "transport": args.transport,
-                  "audibleSyncMeasured": False, "musicLocalFile": args.music_file,
+                  "audibleSyncMeasured": False, "musicLocalFile": args.music_file, "requestedSamples": args.samples,
+                  "partialSamples": observations if not any(check["name"] == "sustained scheduled output on both receivers"
+                                                             for check in checks) else [],
                   "checks": checks, "latestObservations": {device.label: device.latest for device in devices}}
         (output / "results.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     return int(any(check["result"] == "failed" for check in checks))

@@ -89,10 +89,30 @@ the generated-tone source.
 
 The four checks cover two authenticated peers, scheduled output on both
 receivers, matching non-silent PCM prefixes, and eight fresh advancing timing
-samples per receiver. Results retain per-check observations and sampled error,
-uncertainty, output progress and drop counters. Retained start-error values are
-not eight independent start trials. Prefix hashes do not verify every frame.
+samples per receiver by default. Each sample requires new non-silent captured
+and received frames, advancing output, and unchanged recovery/drop counters
+against the post-audio baseline. A lost clock, changed peer count, extra start,
+resync, late frame, inserted silence or drop fails the run even if it recovers.
 
-This checks short software timing windows, not acoustic alignment, Bluetooth
+Use `--samples` from 8 to 600 for a bounded sustained test. For roughly three
+minutes of continuous generated tone:
+
+```powershell
+python tools/capture_relay_e2e/sync_run.py --adb .local-tools/android-sdk/platform-tools/adb.exe --source emulator-5554 --receiver PHONE_A --receiver PHONE_B --transport usb --samples 180 --output .local-tools/sync-usb-sustained-new
+```
+
+The runner waits one second between samples; ADB reads and bounded report waits
+add time. More than eight samples requires the continuous generated-tone
+source, so combining `--music-file` with a larger count is rejected before
+device work. The generated MP3 is finite, not a long-test source.
+
+Results retain the baseline, per-check observations and sampled error,
+uncertainty, non-silent frame counts, output progress and drop counters. On
+failure, partial samples are kept. Final read-only device reports are refreshed
+before cleanup so source errors are retained too; a failed read is recorded
+without skipping the other devices or cleanup. Retained start-error values are
+not independent start trials. Prefix hashes do not verify every frame.
+
+This checks software timing windows, not acoustic alignment, Bluetooth
 range, three physical radio nodes, catalog music or synchronization of the
 sender's original speaker. The public release contains no capture engine.

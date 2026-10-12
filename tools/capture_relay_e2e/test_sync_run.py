@@ -1,9 +1,38 @@
+import argparse
+import io
 import unittest
-from unittest.mock import Mock, call
+from unittest.mock import MagicMock, Mock, call, patch
 
 from copy import deepcopy
 
-from sync_run import LAB, SOURCE, QuietPlayback, REVERSE_PORT, Reverse, advancing_timing, stop_devices, timing_proof
+from sync_run import (
+    LAB, SOURCE, QuietPlayback, REVERSE_PORT, Reverse, advancing_source,
+    advancing_timing, main, parse_args, read_final_reports, sample_count,
+    stop_devices, sustained_timing, timing_proof,
+)
+
+
+class SamplesArgumentTest(unittest.TestCase):
+    args = ["--adb", "unused-adb", "--source", "emulator-5554", "--receiver", "phone-a",
+            "--receiver", "phone-b", "--output", ".local-tools/unused-sample-test"]
+
+    def test_sample_bounds(self):
+        for value in ("8", "180", "600"):
+            self.assertEqual(sample_count(value), int(value))
+        for value in ("7", "601", "0", "-1", "many", "8.5"):
+            with self.subTest(value=value), self.assertRaises(argparse.ArgumentTypeError):
+                sample_count(value)
+
+    def test_default_and_long_generated_tone(self):
+        self.assertEqual(parse_args(self.args).samples, 8)
+        self.assertEqual(parse_args([*self.args, "--samples", "180"]).samples, 180)
+        self.assertEqual(parse_args([*self.args, "--samples", "600"]).samples, 600)
+
+    def test_finite_music_file_cannot_run_a_long_sample_window(self):
+        self.assertEqual(parse_args([*self.args, "--music-file"]).samples, 8)
+        with patch("sys.stderr", new=io.StringIO()), self.assertRaises(SystemExit) as error:
+            parse_args([*self.args, "--music-file", "--samples", "9"])
+        self.assertEqual(error.exception.code, 2)
 
 
 class CleanupTest(unittest.TestCase):
@@ -23,6 +52,51 @@ class CleanupTest(unittest.TestCase):
         stop_devices([device], None, False, checks)
         self.assertEqual(device.command.call_count, 2)
         self.assertEqual(device.command.call_args, call("shell", "am", "force-stop", SOURCE))
+
+    def test_final_reports_refresh_source_errors_without_ui_actions(self):
+        source = Mock(label="source", latest={"status": "Peer connected"})
+        source.report.return_value = {"status": "Peer write timeout", "relay": {"peers": 0}}
+        receiver = Mock(label="receiver", latest={})
+        receiver.report.return_value = {"status": "Peer disconnected"}
+        checks = []
+        read_final_reports([source, receiver], checks)
+        self.assertEqual(source.latest["status"], "Peer write timeout")
+        self.assertEqual(receiver.latest["status"], "Peer disconnected")
+        source.report.return_value["status"] = "mutated"
+        self.assertEqual(source.latest["status"], "Peer write timeout")
+        source.command.assert_not_called()
+        source.dismiss_projection.assert_not_called()
+        self.assertEqual(checks, [])
+
+    def test_failed_final_report_keeps_previous_evidence_and_reads_other_devices(self):
+        source = Mock(label="source", latest={"status": "Last observation"})
+        source.report.side_effect = RuntimeError("Unavailable")
+        receiver = Mock(label="receiver", latest={})
+        receiver.report.return_value = {"status": "Stopped"}
+        checks = []
+        read_final_reports([source, receiver], checks)
+        self.assertEqual(source.latest["status"], "Last observation")
+        self.assertEqual(receiver.latest["status"], "Stopped")
+        self.assertEqual(checks, [{"name": "source final report", "result": "failed"}])
+
+    def test_failed_exercise_reads_reports_before_cleanup(self):
+        destination = MagicMock()
+        destination.is_relative_to.return_value = True
+        (destination / "results.json").exists.return_value = False
+        args = parse_args(SamplesArgumentTest.args)
+        args.output = Mock()
+        args.output.resolve.return_value = destination
+        devices = [Mock(label=label, latest={}) for label in ("source", "receiver1", "receiver2")]
+        events = []
+        with patch("sync_run.parse_args", return_value=args), \
+                patch("sync_run.Device", side_effect=devices), \
+                patch("sync_run.QuietPlayback"), patch("sync_run.Forward"), patch("sync_run.Reverse"), \
+                patch("sync_run.exercise", side_effect=AssertionError("Sampling failed")), \
+                patch("sync_run.read_final_reports", side_effect=lambda *args: events.append("reports")), \
+                patch("sync_run.stop_devices", side_effect=lambda *args: events.append("stop")), \
+                patch("builtins.print"):
+            self.assertEqual(main(), 1)
+        self.assertEqual(events, ["reports", "stop"])
 
 
 class QuietPlaybackTest(unittest.TestCase):
@@ -87,10 +161,14 @@ class TimingProofTest(unittest.TestCase):
     def setUp(self):
         self.report = {
             "reportSequence": 4,
-            "relay": {"clockReady": True, "timedFrames": 50, "clockUncertaintyNanos": 4_000_000},
+            "relay": {"clockReady": True, "timedFrames": 50, "clockUncertaintyNanos": 4_000_000,
+                      "peers": 1, "droppedFrames": 0, "publishedFrames": 0},
             "output": {"timingState": "playing", "scheduledStarts": 1, "queuedFrames": 60,
                        "startErrorNanos": 1_000_000, "outputErrorNanos": 4_000_000,
-                       "playbackHeadFrames": 16000, "writtenBytes": 64000},
+                       "playbackHeadFrames": 16000, "writtenBytes": 64000,
+                       "resyncs": 1, "droppedFrames": 73, "lateFrames": 0, "insertedSilenceFrames": 0},
+            "receivedPcm": {"nonSilentFrames": 100},
+            "capture": {"running": True, "frames": 100, "nonSilentFrames": 50},
         }
 
     def test_accepts_scheduled_software_output(self):
@@ -124,6 +202,68 @@ class TimingProofTest(unittest.TestCase):
                 self.report["output"][key] = value
                 self.assertFalse(timing_proof(self.report))
                 self.report["output"][key] = previous
+
+    def progressed(self):
+        report = deepcopy(self.report)
+        report["reportSequence"] += 1
+        report["relay"]["timedFrames"] += 50
+        report["output"]["writtenBytes"] += 32000
+        report["output"]["playbackHeadFrames"] += 16000
+        report["receivedPcm"]["nonSilentFrames"] += 50
+        return report
+
+    def test_sustained_output_allows_existing_startup_drops_but_requires_audio_progress(self):
+        report = self.progressed()
+        self.assertTrue(sustained_timing(report, self.report, self.report, "receiver"))
+        report["receivedPcm"]["nonSilentFrames"] = self.report["receivedPcm"]["nonSilentFrames"]
+        self.assertFalse(sustained_timing(report, self.report, self.report, "receiver"))
+        self.assertFalse(sustained_timing(self.report, self.report, self.report, "receiver"))
+
+    def test_sustained_output_requires_advancing_playback_head(self):
+        report = self.progressed()
+        report["output"]["playbackHeadFrames"] = self.report["output"]["playbackHeadFrames"]
+        self.assertFalse(sustained_timing(report, self.report, self.report, "receiver"))
+
+    def test_every_new_recovery_or_loss_counter_fails_even_after_output_recovers(self):
+        groups = {"relay": ("peers", "droppedFrames"),
+                  "output": ("scheduledStarts", "resyncs", "droppedFrames", "lateFrames", "insertedSilenceFrames")}
+        for group, fields in groups.items():
+            for field in fields:
+                with self.subTest(group=group, field=field):
+                    report = self.progressed()
+                    report[group][field] += 1
+                    with self.assertRaises(AssertionError):
+                        sustained_timing(report, self.report, self.report, "receiver")
+
+    def test_lost_clock_does_not_wait_for_a_recovery_to_pass(self):
+        report = self.progressed()
+        report["relay"]["clockReady"] = False
+        with self.assertRaises(AssertionError):
+            sustained_timing(report, self.report, self.report, "receiver")
+
+    def test_restarted_report_sequence_fails(self):
+        report = self.progressed()
+        report["reportSequence"] = 1
+        with self.assertRaises(AssertionError):
+            sustained_timing(report, self.report, self.report, "receiver")
+
+    def test_source_needs_new_captured_audio_and_published_frames(self):
+        report = deepcopy(self.report)
+        report["reportSequence"] += 1
+        report["capture"]["frames"] += 50
+        report["relay"]["publishedFrames"] += 50
+        self.assertFalse(advancing_source(report, self.report, self.report))
+        report["capture"]["nonSilentFrames"] += 50
+        self.assertTrue(advancing_source(report, self.report, self.report))
+        self.assertFalse(advancing_source(report, report, self.report))
+
+    def test_source_stop_or_peer_loss_fails_immediately(self):
+        for group, field, value in (("capture", "running", False), ("relay", "peers", 0)):
+            with self.subTest(field=field):
+                report = deepcopy(self.report)
+                report[group][field] = value
+                with self.assertRaises(AssertionError):
+                    advancing_source(report, self.report, self.report)
 
 
 if __name__ == "__main__":
