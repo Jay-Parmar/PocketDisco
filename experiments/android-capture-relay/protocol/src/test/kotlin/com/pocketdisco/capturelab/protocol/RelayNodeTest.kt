@@ -253,10 +253,44 @@ class RelayNodeTest {
         relay.publish(pcm)
         val millis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
         assertTrue("publish took $millis ms", millis < 1_000)
+        await { relay.snapshot().peers == 0 }
         assertEquals(0, relay.snapshot().peers)
         assertEquals(0, relay.snapshot().queuedFrames)
         assertEquals(1L, relay.snapshot().droppedFrames)
         assertEquals("Slow peer queue full", relay.snapshot().lastError)
+    }
+
+    @Test
+    fun `a blocked transport close never runs on the capture publisher`() {
+        val relay = RelayNode(code, queueCapacity = 1).also(resources::add)
+        val (local, remote) = socketPair()
+        val gate = GateOutput(local.getOutputStream())
+        val closing = CountDownLatch(1)
+        val releaseClose = CountDownLatch(1)
+        relay.attach(local.getInputStream(), gate) {
+            closing.countDown()
+            releaseClose.await(2, TimeUnit.SECONDS)
+            gate.release()
+            local.close()
+        }
+        try {
+            PcmWire.authenticate(remote.getInputStream(), remote.getOutputStream(), UUID.randomUUID(), PcmWire.key(code))
+            await { relay.snapshot().peers == 1 }
+            gate.enabled = true
+            relay.publish(pcm)
+            assertTrue(gate.entered.await(2, TimeUnit.SECONDS))
+            relay.publish(pcm)
+            val started = System.nanoTime()
+            relay.publish(pcm)
+            val millis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
+            assertTrue("publish waited $millis ms for transport close", millis < 1_000)
+            assertTrue(closing.await(2, TimeUnit.SECONDS))
+            assertTrue(relay.publish(pcm))
+            assertEquals(0, relay.snapshot().queuedFrames)
+        } finally {
+            releaseClose.countDown()
+            gate.release()
+        }
     }
 
     @Test

@@ -142,14 +142,11 @@ class RelayNode(
         if (frame.hops >= PcmFormat.MAX_HOPS) return
         val targets = synchronized(lock) {
             if (closed) return
-            peers.filter { it !== source && it.authenticated && !it.stopped.get() }
+            peers.filter { it !== source && it.authenticated && !it.stopped.get() && !it.overflowed.get() }
         }
         val outgoing = frame.copy(hops = frame.hops + 1)
         for (peer in targets) {
-            if (!peer.queue.offer(outgoing)) {
-                synchronized(lock) { droppedFrames++ }
-                peer.fail("Slow peer queue full")
-            }
+            if (!peer.queue.offer(outgoing)) peer.markSlow()
         }
     }
 
@@ -167,10 +164,14 @@ class RelayNode(
     private fun checkDeadlines() {
         val now = System.nanoTime()
         val expired = synchronized(lock) {
-            peers.filter { it.deadlineNanos != 0L && now - it.deadlineNanos >= 0 }
+            peers.filter { it.overflowed.get() || it.deadlineNanos != 0L && now - it.deadlineNanos >= 0 }
         }
         expired.forEach {
-            it.fail(if (it.authenticated) "Peer write timeout" else "Peer handshake timeout")
+            it.fail(when {
+                it.overflowed.get() -> "Slow peer queue full"
+                it.authenticated -> "Peer write timeout"
+                else -> "Peer handshake timeout"
+            })
         }
     }
 
@@ -190,6 +191,7 @@ class RelayNode(
         private val input = BufferedInputStream(input, 4_096)
         val queue = ArrayBlockingQueue<AudioFrame>(queueCapacity)
         val stopped = AtomicBoolean(false)
+        val overflowed = AtomicBoolean(false)
         @Volatile var authenticated = false
         @Volatile var remoteId: UUID? = null
         @Volatile var deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(handshakeTimeoutMillis)
@@ -231,6 +233,13 @@ class RelayNode(
                 fail(error.message ?: "Peer write failed")
             } finally {
                 shutdown()
+            }
+        }
+
+        fun markSlow() {
+            if (overflowed.compareAndSet(false, true)) {
+                synchronized(lock) { droppedFrames++ }
+                queue.clear()
             }
         }
 
