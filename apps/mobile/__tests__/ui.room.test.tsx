@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import ReactTestRenderer, { act } from 'react-test-renderer';
 
 import AudioPlayback from '../src/native/NativeAudioPlayback';
+import NearbyAudio from '../src/native/NativeNearbyAudio';
 import { RoomScreen } from '../src/ui/RoomScreen';
 import type { RoomScreenProps } from '../src/ui/RoomScreen';
 import type { RoomDetails } from '../src/ui/types';
@@ -70,6 +71,10 @@ async function press(id: string) {
 
 afterEach(async () => {
   await act(async () => screen?.unmount());
+  jest.mocked(NearbyAudio).getAvailability.mockReturnValue({
+    enabled: false,
+    supported: false,
+  });
 });
 
 test('shows live members, roles, and their actual ready states', async () => {
@@ -195,4 +200,34 @@ test('local preview uses the native player without changing room readiness', asy
   } finally {
     AppState.currentState = previous;
   }
+});
+
+test('nearby entry opens a separate session without changing room intent', async () => {
+  const native = jest.mocked(NearbyAudio);
+  native.getAvailability.mockReturnValue({ enabled: true, supported: true });
+  native.open.mockClear();
+  native.stop.mockClear();
+  const props = await render();
+  await press('nearby-open');
+  expect(native.open).toHaveBeenCalledWith('room-1');
+  expect(props.onReadyChange).not.toHaveBeenCalled();
+  expect(props.onSendMessage).not.toHaveBeenCalled();
+  await act(async () => {
+    screen.update(<RoomScreen {...props} connectionStatus="offline" />);
+  });
+  expect(native.stop).not.toHaveBeenCalled();
+});
+
+test.each([
+  { connectionStatus: 'offline' as const },
+  { currentUserId: 'unknown' },
+  { busy: true },
+])('nearby entry respects unavailable room controls: %o', async overrides => {
+  const native = jest.mocked(NearbyAudio);
+  native.getAvailability.mockReturnValue({ enabled: true, supported: true });
+  native.open.mockClear();
+  await render(overrides);
+  expect(button('nearby-open').props.disabled).toBe(true);
+  await press('nearby-open');
+  expect(native.open).not.toHaveBeenCalled();
 });
