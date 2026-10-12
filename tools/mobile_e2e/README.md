@@ -35,3 +35,29 @@ app and ignores clipped views before tapping.
 ```powershell
 python -m unittest discover -s tools/mobile_e2e -v
 ```
+
+## Internal nearby handoff
+
+Install the internal product and Test Source on a USB phone, and Capture Lab
+on the emulator. Use a fresh isolated local-test API on PC port 8000, start at
+the product welcome screen and leave the emulator at its launcher or the lab.
+The product must use `http://127.0.0.1:8000`. Existing guest data is not cleared.
+
+```powershell
+python tools/mobile_e2e/nearby.py --adb .local-tools/android-sdk/platform-tools/adb.exe --phone PHONE_SERIAL --emulator emulator-5554 --output .local-tools/product-nearby-new
+```
+
+The runner checks the local-test backend and visible saved API address before
+creating a test room. It opens the native nearby screen, authenticates the
+lab receiver over ADB loopback TCP, drives explicit Android capture consent,
+plays the generated tone, checks matching PCM and advancing scheduled output,
+then checks that Back returns to the room, stops capture and disconnects the
+receiver. It preserves the playing observation separately from the stopped
+one. It does not test Bluetooth, catalog playback or acoustic skew.
+
+The test owns its temporary port mappings and lowers volume while running.
+It stops only the product and diagnostic apps before restoring volume. A
+conflicting port, unexpected foreground app, different server address or
+non-test form input stops the run. It leaves the created test room saved;
+leave that room through the UI before repeating. Results stay inside the
+repository without credentials, invite codes, device serials or raw audio.

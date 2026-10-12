@@ -7,7 +7,10 @@ import re
 import secrets
 import time
 
-from run import Device, Forward, LAB, LAUNCHERS, MUSIC, SOURCE, SYSTEM, audio_proof, names_lab, utc_now
+if __package__:
+    from .run import Device, Forward, LAB, LAUNCHERS, MUSIC, SOURCE, SYSTEM, audio_proof, names_lab, utc_now
+else:
+    from run import Device, Forward, LAB, LAUNCHERS, MUSIC, SOURCE, SYSTEM, audio_proof, names_lab, utc_now
 
 
 REVERSE_PORT = "tcp:18991"
