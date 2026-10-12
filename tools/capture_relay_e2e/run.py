@@ -113,12 +113,13 @@ class Device:
         left, top, right, bottom = bounds(node)
         self.command("shell", "input", "tap", str((left + right) // 2), str((top + bottom) // 2))
 
-    def scroll(self, down=True):
+    def scroll(self, down=True, small=False):
         width, height = map(int, re.findall(r"(\d+)x(\d+)", self.command("shell", "wm", "size"))[-1])
-        start, end = (int(height * .75), int(height * .25))
+        start, end, duration = (.6, .4, "700") if small else (.75, .25, "350")
         if not down:
             start, end = end, start
-        self.command("shell", "input", "swipe", str(width // 2), str(start), str(width // 2), str(end), "350")
+        self.command("shell", "input", "swipe", str(width // 2), str(int(height * start)),
+                     str(width // 2), str(int(height * end)), duration)
 
     def find(self, text, package=LAB, description=False):
         for attempt in range(8):
@@ -138,7 +139,7 @@ class Device:
                 return
             if attempt < 7:
                 self.check_foreground({package})
-                self.scroll(down=top >= height * .1)
+                self.scroll(down=top >= height * .1, small=True)
         raise AssertionError(f"{self.label}: control stayed near the screen edge: {text}")
 
     def fill_code(self, code):

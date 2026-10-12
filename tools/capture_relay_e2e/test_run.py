@@ -182,7 +182,7 @@ class TapTest(unittest.TestCase):
                 patch.object(self.device, "check_foreground") as guard, \
                 patch.object(self.device, "scroll") as scroll, patch.object(self.device, "tap_node") as tap:
             self.device.tap("Host USB/TCP test")
-        scroll.assert_called_once_with(down=False)
+        scroll.assert_called_once_with(down=False, small=True)
         guard.assert_called_once_with({LAB})
         self.assertEqual(find.call_count, 2)
         tap.assert_called_once_with(self.visible)
@@ -194,7 +194,7 @@ class TapTest(unittest.TestCase):
                 patch.object(self.device, "check_foreground"), \
                 patch.object(self.device, "scroll") as scroll, patch.object(self.device, "tap_node") as tap:
             self.device.tap("Host USB/TCP test")
-        scroll.assert_called_once_with(down=True)
+        scroll.assert_called_once_with(down=True, small=True)
         tap.assert_called_once_with(self.visible)
 
     def test_visible_control_uses_current_bounds_without_scrolling(self):
@@ -246,6 +246,31 @@ class TapTest(unittest.TestCase):
         guard.assert_called_once_with({SOURCE})
         scroll.assert_not_called()
         tap.assert_not_called()
+
+
+class ScrollTest(unittest.TestCase):
+    def setUp(self):
+        self.device = Device("adb", "test", "phone")
+
+    def test_small_scroll_is_short_and_slow(self):
+        with patch.object(self.device, "command", return_value="Physical size: 1080x2400") as command:
+            self.device.scroll(small=True)
+        command.assert_called_with("shell", "input", "swipe", "540", "1440", "540", "960", "700")
+
+    def test_small_upward_scroll_reverses_the_same_gesture(self):
+        with patch.object(self.device, "command", return_value="Physical size: 1080x2400") as command:
+            self.device.scroll(down=False, small=True)
+        command.assert_called_with("shell", "input", "swipe", "540", "960", "540", "1440", "700")
+
+    def test_search_scroll_keeps_its_original_distance_and_duration(self):
+        with patch.object(self.device, "command", return_value="Physical size: 1080x2400") as command:
+            self.device.scroll()
+        command.assert_called_with("shell", "input", "swipe", "540", "1800", "540", "600", "350")
+
+    def test_search_upward_scroll_keeps_its_original_distance_and_duration(self):
+        with patch.object(self.device, "command", return_value="Physical size: 1080x2400") as command:
+            self.device.scroll(down=False)
+        command.assert_called_with("shell", "input", "swipe", "540", "600", "540", "1800", "350")
 
 
 class EvidenceTest(unittest.TestCase):
