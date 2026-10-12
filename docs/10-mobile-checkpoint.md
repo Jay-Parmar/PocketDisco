@@ -1,8 +1,85 @@
 # Android delivery checkpoint
 
-2026-10-08. Desktop remains paused. The owner has merged the Phase 0 harness
+2026-10-12. Desktop remains paused. The owner has merged the Phase 0 harness
 and Android multi-output experiment PRs into main. Those experiment merges
 do not establish acoustic synchronization or product playback readiness.
+
+## Server connection checkpoint: 2026-10-12
+
+[PR 11](https://github.com/Jay-Parmar/PocketDisco/pull/11) is stacked on PR 10.
+No branches were merged. The installed backend remains healthy and unchanged;
+restoring the missing SSH/ADB route made the internal apps reachable again.
+This is private USB development access, not a public phone endpoint. See
+[router forwarding and HTTPS gates](11-deployment-proposal.md#connection-recovery-2026-10-12).
+
+The mobile changes preserve the chosen server before sign-in and across
+session expiry, keep credentials isolated when switching servers, and clear
+recovered connection errors without hiding unrelated failures. A device test
+also exposed a successful-Leave race: the room socket could report removed
+membership before the HTTP response arrived. Confirmed leave now clears only
+that operation's membership error. HTTP failures and newer errors remain visible.
+
+The first rebuild exposed missing Gradle inputs for the shared TypeScript
+client outside the mobile directory. Both bundle tasks now track those sources;
+CI checks the input membership. The rebuilt internal and release source maps
+match the current client, and both signed internal APKs contain that bundle.
+
+Runtime sources through `d5d2da9` are installed on Nothing, Samsung and the
+API 36 emulator. Existing matching development signing keys allowed in-place
+updates on all three. No app was uninstalled and no app data was cleared.
+
+Verification:
+
+- Mobile: 150 tests, TypeScript and ESLint pass. Domain: 80 tests and TypeScript
+  pass, including the three reproduced leave-notification races and guards
+  for newer errors, unrelated errors and failed HTTP requests.
+- Android: 36 product native tests, internal/release lint and both APK builds
+  pass. Existing compatibility warnings and release blockers remain.
+- Room harness: 49 tests and Ruff checks pass. Header searches stay upward,
+  taps stay inside visible app bounds, and leave requires Welcome with no
+  error banner after bounded settling.
+- API: 108 local tests pass with eight real-store tests skipped. All nine
+  remote smoke checks pass against the deployed PostgreSQL/Redis backend.
+- Restricted HTTPS preparation: 18 tests and four Caddy parser variants pass.
+  No proxy or certificate has been installed.
+
+Device evidence is in `.local-tools/mobile-connection-20261012/`:
+
+- `rooms-three-01` stopped at preflight because ADB supplied a blank line in
+  its mapping output. The parser fix has a regression test.
+- `rooms-three-02` passed nine checks from 14:08:18 to 14:18:00 UTC: health,
+  welcome preflight, create, three-member join/presence, readiness, chat,
+  background recovery, process recovery and offline cold-start retry. The run
+  failed during exit lookup, so it is not recorded as a clean end-to-end pass.
+- `rooms-cleanup-03` confirmed the emulator left; the physical-phone cleanup
+  was interrupted. Follow-up found Samsung's API mapping missing and restored
+  it without replacing any conflicting mapping. `rooms-cleanup-04` retained
+  the unsuccessful check rather than overwriting it.
+- `rooms-cleanup-05` returned both physical phones to Welcome, but retained
+  their observed error-banner flags. Reading the banners exposed the Leave
+  race fixed above. These reports are not clean-exit passes.
+- `rooms-exit-06` passed all six focused checks on `d5d2da9`, from 14:45:58
+  to 14:49:30 UTC. All three updated apps passed welcome/API preflight,
+  create/join and presence, then left guests first and host last with no error
+  banner. This verifies the exit fix separately; it does not relabel the
+  earlier interrupted full run as passing.
+
+Internal APKs and their checksum/signer manifest are under
+`.local-tools/mobile-connection-20261012/artifacts/d5d2da9/`:
+
+- `PocketDisco-internal-nothing-emulator.apk` updates those existing installs.
+- `PocketDisco-internal-samsung.apk` updates Samsung or installs on a fresh
+  internal test device. Do not replace an existing differently signed app.
+
+Both use `http://127.0.0.1:8000` by default and need the private development
+route until public HTTPS is activated. The API mappings were retained for
+continued use. Disconnecting USB or ending the PC's SSH tunnel breaks that
+route. The release build still has no production endpoint or upload signing.
+
+Audio is a separate result: the latest Bluetooth relay regression lost clock
+quality; a short USB fanout comparison passed. See the
+[capture checkpoint](13-synchronized-capture.md#connection-recovery-regression-2026-10-12).
+Neither establishes acoustic sync, Internet-room playback or Play readiness.
 
 ## Review branches
 

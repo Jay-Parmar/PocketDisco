@@ -26,9 +26,12 @@ user profile without removing or resetting any app.
 `relay-regression-02` ran from 13:59:57 to 14:02:08 UTC: Nothing to Samsung over
 paired Bluetooth, then Samsung to the emulator over USB. Authentication and
 initial scheduled output passed. Matching audible-prefix PCM hashes reached
-both receivers, but the stable audio/timing check failed. The final clock
-round trips were 889.761 ms on Samsung and 923.766 ms on the emulator. Both
-receivers had no usable clock samples and stopped in `waiting_clock`. Each
+both receivers, but the stable audio/timing check failed.
+The initial scheduling observation was silent; no sustained baseline or
+requested samples were collected, and the matching-audio check did not pass.
+The final clock round trips were 889.761 ms on Samsung and 923.766 ms on the
+emulator. Both receivers had no usable clock samples and stopped in
+`waiting_clock`. Each
 had 50 rejected replies; the source and relay links stayed connected with
 empty application relay queues. The 200 ms clock admission limit was not
 relaxed. Matching bytes alone do not establish synchronized output.
