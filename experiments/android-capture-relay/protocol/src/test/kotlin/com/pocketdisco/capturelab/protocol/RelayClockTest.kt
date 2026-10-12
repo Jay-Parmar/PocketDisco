@@ -191,11 +191,107 @@ class RelayClockTest {
         PcmWire.writeFrame(source.getOutputStream(), AudioFrame(session, 1, System.nanoTime(), 1, pcm))
         await { receiver.snapshot().receivedFrames == 2L }
         assertFalse(receiver.snapshot().clockReady)
+        assertEquals(1L, receiver.snapshot().clockRepliesAccepted)
+        assertEquals(0L, receiver.snapshot().clockRepliesRejected)
         repeat(2) {
             val next = PcmWire.readPacket(source.getInputStream()) as ClockRequest
             PcmWire.writePacket(source.getOutputStream(), reply(next))
         }
         await { receiver.snapshot().clockReady }
+    }
+
+    @Test
+    fun `local clock diagnostics count accepted rejected and timed out probes`() {
+        val now = AtomicLong(100_000_000_000)
+        val receiver = node(clockNanos = now::get)
+        val source = rawPeer(receiver)
+        val session = UUID.randomUUID()
+        val output = source.getOutputStream()
+        PcmWire.writeFrame(output, AudioFrame(session, 0, now.get(), 1, pcm))
+        val first = PcmWire.readPacket(source.getInputStream()) as ClockRequest
+        now.set(first.sentNanos + 20_000_000)
+        PcmWire.writePacket(output, ClockReply(session, first.requestId, first.sentNanos,
+            first.sentNanos + 10_000_000, first.sentNanos + 10_000_000, 1))
+        await {
+            val state = receiver.snapshot()
+            state.receivedFrames == 1L && state.clockRepliesAccepted == 1L && state.clockProbesSent == 1L
+        }
+        assertEquals(1L, receiver.snapshot().clockProbesSent)
+        assertEquals(1, receiver.snapshot().clockSamples)
+        assertEquals(20_000_000L, receiver.snapshot().clockLastRoundTripNanos)
+        assertEquals(20_000_000L, receiver.snapshot().clockLastElapsedNanos)
+
+        now.set(first.sentNanos + 100_000_000)
+        val second = PcmWire.readPacket(source.getInputStream()) as ClockRequest
+        now.set(second.sentNanos + 300_000_000)
+        PcmWire.writePacket(output, ClockReply(session, second.requestId, second.sentNanos,
+            second.sentNanos + 150_000_000, second.sentNanos + 150_000_000, 1))
+        await { receiver.snapshot().clockRepliesRejected == 1L }
+        assertEquals(1L, receiver.snapshot().clockRepliesAccepted)
+        assertEquals(1, receiver.snapshot().clockSamples)
+        assertEquals(300_000_000L, receiver.snapshot().clockLastRoundTripNanos)
+        assertEquals(300_000_000L, receiver.snapshot().clockLastElapsedNanos)
+
+        val third = PcmWire.readPacket(source.getInputStream()) as ClockRequest
+        now.set(third.sentNanos + 1_000_000_001)
+        val fourth = PcmWire.readPacket(source.getInputStream()) as ClockRequest
+        await { receiver.snapshot().clockProbesSent == 4L }
+        assertEquals(1L, receiver.snapshot().clockProbeTimeouts)
+        PcmWire.writePacket(output, ClockReply(session, third.requestId, third.sentNanos,
+            third.sentNanos + 10_000_000, third.sentNanos + 10_000_000, 1))
+        PcmWire.writeFrame(output, AudioFrame(session, 1, now.get(), 1, pcm))
+        await { receiver.snapshot().receivedFrames == 2L }
+        assertEquals(1L, receiver.snapshot().clockRepliesRejected)
+        assertEquals(1L, receiver.snapshot().clockRepliesAccepted)
+
+        now.set(fourth.sentNanos + 20_000_000)
+        PcmWire.writePacket(output, ClockReply(session, fourth.requestId, fourth.sentNanos,
+            fourth.sentNanos + 10_000_000, fourth.sentNanos + 10_000_000, 1))
+        await { receiver.snapshot().clockRepliesAccepted == 2L }
+        assertEquals(2, receiver.snapshot().clockSamples)
+        assertEquals(1L, receiver.snapshot().clockRepliesRejected)
+        assertEquals(1L, receiver.snapshot().clockProbeTimeouts)
+        assertEquals(20_000_000L, receiver.snapshot().clockLastRoundTripNanos)
+        source.close()
+        await { receiver.snapshot().peers == 0 }
+        val afterDisconnect = receiver.snapshot()
+        assertEquals(0, afterDisconnect.clockSamples)
+        assertEquals(4L, afterDisconnect.clockProbesSent)
+        assertEquals(2L, afterDisconnect.clockRepliesAccepted)
+        assertEquals(1L, afterDisconnect.clockRepliesRejected)
+        assertEquals(1L, afterDisconnect.clockProbeTimeouts)
+        assertEquals(20_000_000L, afterDisconnect.clockLastRoundTripNanos)
+    }
+
+    @Test
+    fun `forwarded clock probes do not count as local diagnostics`() {
+        val now = 100_000_000_000L
+        val relay = node(clockNanos = { now })
+        val parent = rawPeer(relay)
+        val child = rawPeer(relay)
+        val session = UUID.randomUUID()
+        PcmWire.writeFrame(parent.getOutputStream(), AudioFrame(session, 0, now, 1, pcm))
+        assertTrue(PcmWire.readPacket(child.getInputStream()) is PcmPacket)
+        assertTrue(PcmWire.readPacket(parent.getInputStream()) is ClockRequest)
+        await { relay.snapshot().clockProbesSent == 1L }
+
+        val request = ClockRequest(session, UUID.randomUUID(), now, 1)
+        PcmWire.writePacket(child.getOutputStream(), request)
+        val forwarded = PcmWire.readPacket(parent.getInputStream()) as ClockRequest
+        assertEquals(request.requestId, forwarded.requestId)
+        assertEquals(2, forwarded.hops)
+        PcmWire.writePacket(parent.getOutputStream(), ClockReply(session, forwarded.requestId,
+            forwarded.sentNanos, now, now, forwarded.hops))
+        val reply = PcmWire.readPacket(child.getInputStream()) as ClockReply
+        assertEquals(request.requestId, reply.requestId)
+        assertEquals(1, reply.hops)
+
+        val state = relay.snapshot()
+        assertEquals(1L, state.clockProbesSent)
+        assertEquals(0L, state.clockRepliesAccepted)
+        assertEquals(0L, state.clockRepliesRejected)
+        assertEquals(0L, state.clockProbeTimeouts)
+        assertEquals(0, state.clockSamples)
     }
 
     @Test

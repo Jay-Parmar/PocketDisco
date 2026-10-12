@@ -22,13 +22,26 @@ internal class RootClock {
 
     private val samples = ArrayDeque<Sample>()
     private var offset: Long? = null
+    // Mapping resets leave lifetime reply diagnostics intact.
+    var acceptedReplies = 0L
+        private set
+    var rejectedReplies = 0L
+        private set
+    var lastRoundTripNanos: Long? = null
+        private set
+    var lastElapsedNanos: Long? = null
+        private set
 
     fun add(sent: Long, rootReceived: Long, rootSent: Long, received: Long): Boolean {
-        if (sent < 0 || rootReceived < 0 || rootSent < rootReceived || received < sent) return false
-        val elapsed = received - sent
-        val processing = rootSent - rootReceived
-        if (elapsed > MAX_ROUND_TRIP_NANOS || processing > elapsed) return false
-        if (elapsed - processing > MAX_UNCERTAINTY_NANOS * 2) return false
+        val elapsed = if (sent >= 0 && received >= sent) received - sent else null
+        val processing = if (rootReceived >= 0 && rootSent >= rootReceived) rootSent - rootReceived else null
+        lastElapsedNanos = elapsed
+        lastRoundTripNanos = if (elapsed != null && processing != null && processing <= elapsed) {
+            elapsed - processing
+        } else null
+        if (elapsed == null || processing == null) return rejectReply()
+        if (elapsed > MAX_ROUND_TRIP_NANOS || processing > elapsed) return rejectReply()
+        if (elapsed - processing > MAX_UNCERTAINTY_NANOS * 2) return rejectReply()
         expire(received)
         val sample = Sample(
             rootReceived + processing / 2 - (sent + elapsed / 2),
@@ -45,6 +58,7 @@ internal class RootClock {
         val best = samples.minBy { it.roundTrip }
         offset = offset?.let { it + (best.offset - it).coerceIn(-MAX_SLEW_NANOS, MAX_SLEW_NANOS) }
             ?: best.offset
+        acceptedReplies++
         return true
     }
 
@@ -65,6 +79,11 @@ internal class RootClock {
     fun reset() {
         samples.clear()
         offset = null
+    }
+
+    private fun rejectReply(): Boolean {
+        rejectedReplies++
+        return false
     }
 
     private fun expire(now: Long) {

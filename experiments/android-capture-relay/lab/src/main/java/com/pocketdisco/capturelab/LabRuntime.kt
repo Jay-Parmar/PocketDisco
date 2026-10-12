@@ -205,6 +205,13 @@ object LabRuntime {
                 put("clockReady", relay?.clockReady ?: false)
                 put("clockUncertaintyNanos", relay?.clockUncertaintyNanos ?: JSONObject.NULL)
                 put("clockAgeMillis", relay?.clockAgeMillis ?: JSONObject.NULL)
+                put("clockSamples", relay?.clockSamples ?: 0)
+                put("clockProbesSent", relay?.clockProbesSent ?: 0)
+                put("clockRepliesAccepted", relay?.clockRepliesAccepted ?: 0)
+                put("clockRepliesRejected", relay?.clockRepliesRejected ?: 0)
+                put("clockProbeTimeouts", relay?.clockProbeTimeouts ?: 0)
+                put("clockLastRoundTripNanos", relay?.clockLastRoundTripNanos ?: JSONObject.NULL)
+                put("clockLastElapsedNanos", relay?.clockLastElapsedNanos ?: JSONObject.NULL)
             })
             put("output", JSONObject().apply {
                 put("writtenBytes", speaker?.writtenBytes?.get() ?: 0)

@@ -29,6 +29,17 @@ data class RelaySnapshot(
     val clockReady: Boolean = false,
     val clockUncertaintyNanos: Long? = null,
     val clockAgeMillis: Long? = null,
+    val clockSamples: Int = 0,
+    // Local probe writes only. Forwarded probes are excluded.
+    val clockProbesSent: Long = 0,
+    // Replies passed peer, nonce and freshness checks before estimator acceptance or rejection.
+    val clockRepliesAccepted: Long = 0,
+    val clockRepliesRejected: Long = 0,
+    // Pending local probes that exceeded their reply deadline, excluding disconnects and clock resets.
+    val clockProbeTimeouts: Long = 0,
+    // Last estimator reply, including rejected replies. Round trip excludes root processing time.
+    val clockLastRoundTripNanos: Long? = null,
+    val clockLastElapsedNanos: Long? = null,
 )
 
 class RelayNode(
@@ -72,6 +83,8 @@ class RelayNode(
     private var lastError: String? = null
     private var timedFrames = 0L
     private var unscheduledFrames = 0L
+    private var clockProbesSent = 0L
+    private var clockProbeTimeouts = 0L
 
     init {
         require(handshakeTimeoutMillis in 1..30_000)
@@ -136,6 +149,13 @@ class RelayNode(
             !closed && clockParent?.available() == true && estimate?.ready == true,
             estimate?.uncertaintyNanos,
             estimate?.ageNanos?.let { TimeUnit.NANOSECONDS.toMillis(it) },
+            estimate?.samples ?: 0,
+            clockProbesSent,
+            rootClock.acceptedReplies,
+            rootClock.rejectedReplies,
+            clockProbeTimeouts,
+            rootClock.lastRoundTripNanos,
+            rootClock.lastElapsedNanos,
         )
     }
 
@@ -231,7 +251,10 @@ class RelayNode(
             val now = clockNanos()
             clockRoutes.entries.removeAll { now < it.value.createdAt || now - it.value.createdAt > PROBE_TIMEOUT_NANOS }
             pendingClock?.let {
-                if (now < it.sentNanos || now - it.sentNanos > PROBE_TIMEOUT_NANOS) pendingClock = null
+                if (now < it.sentNanos || now - it.sentNanos > PROBE_TIMEOUT_NANOS) {
+                    if (now >= it.sentNanos) clockProbeTimeouts++
+                    pendingClock = null
+                }
             }
             val parent = clockParent ?: return
             val session = clockSession ?: return
@@ -242,7 +265,7 @@ class RelayNode(
             nextProbeAt = now + if (clockProbes < 7) INITIAL_PROBE_INTERVAL_NANOS else PROBE_INTERVAL_NANOS
             parent to request
         }
-        work.first.offerControl(work.second)
+        work.first.offerControl(work.second, localProbe = true)
     }
 
     private fun receiveClockRequest(request: ClockRequest, source: Peer) {
@@ -310,6 +333,7 @@ class RelayNode(
     }
 
     private class PendingClock(val requestId: UUID, val sentNanos: Long, val parent: Peer)
+    private class QueuedControl(val packet: RelayPacket, val localProbe: Boolean)
     private class ClockRoute(
         val sessionId: UUID,
         val sentNanos: Long,
@@ -350,7 +374,7 @@ class RelayNode(
     ) {
         private val input = BufferedInputStream(input, 4_096)
         val queue = ArrayBlockingQueue<AudioFrame>(queueCapacity)
-        private val controls = ArrayBlockingQueue<RelayPacket>(MAX_CLOCK_ROUTES)
+        private val controls = ArrayBlockingQueue<QueuedControl>(MAX_CLOCK_ROUTES)
         private val queued = Semaphore(0)
         val stopped = AtomicBoolean(false)
         val overflowed = AtomicBoolean(false)
@@ -369,9 +393,9 @@ class RelayNode(
             if (queue.offer(frame)) queued.release() else markSlow()
         }
 
-        fun offerControl(packet: RelayPacket) {
+        fun offerControl(packet: RelayPacket, localProbe: Boolean = false) {
             if (!available()) return
-            if (controls.offer(packet)) queued.release() else markSlow()
+            if (controls.offer(QueuedControl(packet, localProbe))) queued.release() else markSlow()
         }
 
         fun checkControlRate(now: Long) {
@@ -419,7 +443,8 @@ class RelayNode(
                 while (!stopped.get()) {
                     queued.acquire()
                     if (stopped.get()) break
-                    val packet = controls.poll() ?: queue.poll()?.let(::PcmPacket) ?: continue
+                    val control = controls.poll()
+                    val packet = control?.packet ?: queue.poll()?.let(::PcmPacket) ?: continue
                     synchronized(lock) {
                         if (stopped.get()) return
                         deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(writeTimeoutMillis)
@@ -428,6 +453,7 @@ class RelayNode(
                     synchronized(lock) {
                         deadlineNanos = 0
                         if (packet is PcmPacket) sentFrames++
+                        if (control?.localProbe == true) clockProbesSent++
                     }
                 }
             } catch (_: InterruptedException) {

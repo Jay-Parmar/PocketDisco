@@ -85,6 +85,75 @@ class RootClockTest {
     }
 
     @Test
+    fun `partial expiry drops readiness without clearing reply diagnostics`() {
+        val started = local
+        repeat(3) { index ->
+            val sent = started + index * 1_000_000_000L
+            assertTrue(clock.add(sent, sent + 10_000_000, sent + 10_000_000, sent + 20_000_000))
+        }
+        assertTrue(clock.estimate(started + 2_020_000_000)!!.ready)
+
+        val estimate = clock.estimate(started + 5_020_000_001)!!
+        assertEquals(2, estimate.samples)
+        assertFalse(estimate.ready)
+        assertTrue(estimate.ageNanos < RootClock.MAX_AGE_NANOS)
+        assertTrue(estimate.uncertaintyNanos < RootClock.MAX_UNCERTAINTY_NANOS)
+        assertEquals(3L, clock.acceptedReplies)
+        assertEquals(0L, clock.rejectedReplies)
+
+        assertNull(clock.estimate(started + 7_020_000_001))
+        assertEquals(3L, clock.acceptedReplies)
+        assertEquals(20_000_000L, clock.lastRoundTripNanos)
+        assertEquals(20_000_000L, clock.lastElapsedNanos)
+    }
+
+    @Test
+    fun `rejected replies retain their timing without replacing the mapping`() {
+        repeat(3) { sample(0) }
+        val before = clock.estimate(local)!!
+        assertFalse(clock.add(local, local + 250_000_000, local + 250_000_000, local + 500_000_000))
+
+        assertEquals(3L, clock.acceptedReplies)
+        assertEquals(1L, clock.rejectedReplies)
+        assertEquals(500_000_000L, clock.lastRoundTripNanos)
+        assertEquals(500_000_000L, clock.lastElapsedNanos)
+        assertEquals(before.offsetNanos, clock.estimate(local + 500_000_000)!!.offsetNanos)
+        assertEquals(before.samples, clock.estimate(local + 500_000_000)!!.samples)
+    }
+
+    @Test
+    fun `invalid intervals never report negative diagnostic durations`() {
+        assertNull(clock.lastElapsedNanos)
+        assertNull(clock.lastRoundTripNanos)
+        assertFalse(clock.add(-1, 1, 2, 3))
+        assertNull(clock.lastElapsedNanos)
+        assertNull(clock.lastRoundTripNanos)
+
+        assertFalse(clock.add(1, 4, 3, 6))
+        assertEquals(5L, clock.lastElapsedNanos)
+        assertNull(clock.lastRoundTripNanos)
+        assertFalse(clock.add(1, 2, 20, 6))
+        assertEquals(5L, clock.lastElapsedNanos)
+        assertNull(clock.lastRoundTripNanos)
+        assertEquals(0L, clock.acceptedReplies)
+        assertEquals(3L, clock.rejectedReplies)
+    }
+
+    @Test
+    fun `mapping resets preserve lifetime reply counters`() {
+        repeat(3) { sample(0) }
+        sample(500_000_000)
+        assertEquals(4L, clock.acceptedReplies)
+        assertEquals(1, clock.estimate(local)!!.samples)
+        clock.reset()
+        assertNull(clock.estimate(local))
+        assertEquals(4L, clock.acceptedReplies)
+        assertEquals(0L, clock.rejectedReplies)
+        assertEquals(20_000_000L, clock.lastRoundTripNanos)
+        assertEquals(21_000_000L, clock.lastElapsedNanos)
+    }
+
+    @Test
     fun `sample storage remains bounded`() {
         repeat(40) { sample(0) }
         assertEquals(8, clock.estimate(local)!!.samples)
