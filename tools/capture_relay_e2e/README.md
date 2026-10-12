@@ -45,7 +45,8 @@ that bundles the generated MP3, not an earlier WAV-only build.
 
 Reports contain diagnostic counters and hashes, not PCM, session codes, device
 serials, screenshots, or saved UI hierarchies. Output must stay inside the repo.
-The app-private report can be a partial write; polling retries JSON parse failures.
+Current app-private reports use atomic writes; polling also tolerates an
+unavailable report or a JSON parse failure while an older build is running.
 The `first100AudibleFramesSha256` field hashes non-silent PCM frames. Its name
 does not imply that a microphone measured audible output.
 
@@ -60,3 +61,38 @@ phone, Bluetooth or acoustic results.
 
 `run.py` is import-safe. `Device` exposes `command`, `launch`, `tap`, `fill_code`,
 `consent`, `report`, and `wait_report` for a supervised manual test.
+
+## Scheduled receiver check
+
+`sync_run.py` uses one source and two receivers with protocol-v2 builds. It
+temporarily lowers media volume to at most 2, stops the owned test apps before
+restoring the previous volume, and preserves volume changes made during a run.
+It refuses busy ADB ports and unexpected foreground apps.
+
+For an emulator source and two physical USB receivers:
+
+```powershell
+python tools/capture_relay_e2e/sync_run.py --adb .local-tools/android-sdk/platform-tools/adb.exe --source emulator-5554 --receiver PHONE_A --receiver PHONE_B --transport usb --output .local-tools/sync-usb-new
+```
+
+For a paired physical Bluetooth link followed by a USB hop to the emulator:
+
+```powershell
+python tools/capture_relay_e2e/sync_run.py --adb .local-tools/android-sdk/platform-tools/adb.exe --source PHONE_A --receiver PHONE_B --receiver emulator-5554 --transport mixed --peer-name "Phone A paired name" --music-file --output .local-tools/sync-mixed-new
+```
+
+The mixed path is A -> Bluetooth -> B -> ADB loopback TCP -> emulator.
+Pair A and B first. `--music-file` opens only the bundled generated MP3 in the
+already installed music app. Its local-audio permission must be settled by
+the owner before running; this runner does not grant it. Omit the flag to use
+the generated-tone source.
+
+The four checks cover two authenticated peers, scheduled output on both
+receivers, matching non-silent PCM prefixes, and eight fresh advancing timing
+samples per receiver. Results retain per-check observations and sampled error,
+uncertainty, output progress and drop counters. Retained start-error values are
+not eight independent start trials. Prefix hashes do not verify every frame.
+
+This checks short software timing windows, not acoustic alignment, Bluetooth
+range, three physical radio nodes, catalog music or synchronization of the
+sender's original speaker. The public release contains no capture engine.
