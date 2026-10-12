@@ -19,6 +19,8 @@ object PcmFormat {
     const val FRAME_MILLIS = 20
     const val FRAME_BYTES = 640
     const val MAX_HOPS = 3
+    const val FRAME_NANOS = 20_000_000L
+    const val PLAYOUT_DELAY_NANOS = 1_500_000_000L
 }
 
 data class AudioFrame(
@@ -29,14 +31,33 @@ data class AudioFrame(
     val pcm: ByteArray,
 )
 
+internal sealed interface RelayPacket
+internal data class PcmPacket(val frame: AudioFrame) : RelayPacket
+internal data class ClockRequest(
+    val sessionId: UUID,
+    val requestId: UUID,
+    val sentNanos: Long,
+    val hops: Int,
+) : RelayPacket
+internal data class ClockReply(
+    val sessionId: UUID,
+    val requestId: UUID,
+    val sentNanos: Long,
+    val rootReceivedNanos: Long,
+    val rootSentNanos: Long,
+    val hops: Int,
+) : RelayPacket
+
 internal object PcmWire {
     private const val HELLO_MAGIC = 0x50444348
     private const val FRAME_MAGIC = 0x50444346
-    private const val VERSION = 1
+    private const val REQUEST_MAGIC = 0x50444351
+    private const val REPLY_MAGIC = 0x50444352
+    private const val VERSION = 2
     private const val NONCE_BYTES = 32
     private const val PROOF_BYTES = 32
     private const val FRAME_HEADER_BYTES = 47
-    private val proofContext = "PocketDisco capture relay v1".toByteArray(Charsets.US_ASCII)
+    private val proofContext = "PocketDisco capture relay v2".toByteArray(Charsets.US_ASCII)
 
     fun key(joinCode: String): ByteArray {
         require(joinCode.length == 32 && joinCode.all { it.digitToIntOrNull(16) != null }) {
@@ -97,9 +118,69 @@ internal object PcmWire {
     }
 
     fun readFrame(input: InputStream): AudioFrame {
+        return (readPacket(input) as? PcmPacket)?.frame ?: throw IOException("Expected PCM frame")
+    }
+
+    fun writePacket(output: OutputStream, packet: RelayPacket) {
+        if (packet is PcmPacket) {
+            writeFrame(output, packet.frame)
+            return
+        }
+        val bytes = when (packet) {
+            is ClockRequest -> {
+                validateClock(packet.sentNanos, packet.hops)
+                ByteBuffer.allocate(46).apply {
+                    putInt(REQUEST_MAGIC)
+                    put(VERSION.toByte())
+                    putUuid(packet.sessionId)
+                    putUuid(packet.requestId)
+                    putLong(packet.sentNanos)
+                    put(packet.hops.toByte())
+                }
+            }
+            is ClockReply -> {
+                validateClock(packet.sentNanos, packet.hops)
+                checkWire(packet.rootReceivedNanos >= 0 && packet.rootSentNanos >= packet.rootReceivedNanos,
+                    "Invalid root timestamp")
+                ByteBuffer.allocate(62).apply {
+                    putInt(REPLY_MAGIC)
+                    put(VERSION.toByte())
+                    putUuid(packet.sessionId)
+                    putUuid(packet.requestId)
+                    putLong(packet.sentNanos)
+                    putLong(packet.rootReceivedNanos)
+                    putLong(packet.rootSentNanos)
+                    put(packet.hops.toByte())
+                }
+            }
+            is PcmPacket -> error("PCM is written above")
+        }
+        output.write(bytes.array())
+        output.flush()
+    }
+
+    fun readPacket(input: InputStream): RelayPacket {
         val reader = DataInputStream(input)
-        checkWire(reader.readInt() == FRAME_MAGIC, "Invalid frame magic")
+        val magic = reader.readInt()
+        checkWire(magic == FRAME_MAGIC || magic == REQUEST_MAGIC || magic == REPLY_MAGIC, "Invalid frame magic")
         checkWire(reader.readUnsignedByte() == VERSION, "Unsupported frame version")
+        if (magic != FRAME_MAGIC) {
+            val sessionId = reader.readUuid()
+            val requestId = reader.readUuid()
+            val sentNanos = reader.readLong()
+            if (magic == REQUEST_MAGIC) {
+                val hops = reader.readUnsignedByte()
+                validateClock(sentNanos, hops)
+                return ClockRequest(sessionId, requestId, sentNanos, hops)
+            }
+            val rootReceivedNanos = reader.readLong()
+            val rootSentNanos = reader.readLong()
+            val hops = reader.readUnsignedByte()
+            validateClock(sentNanos, hops)
+            checkWire(rootReceivedNanos >= 0 && rootSentNanos >= rootReceivedNanos,
+                "Invalid root timestamp")
+            return ClockReply(sessionId, requestId, sentNanos, rootReceivedNanos, rootSentNanos, hops)
+        }
         checkWire(reader.readInt() == PcmFormat.SAMPLE_RATE, "Unsupported sample rate")
         checkWire(reader.readUnsignedByte() == PcmFormat.CHANNELS, "Unsupported channel count")
         checkWire(reader.readUnsignedByte() == PcmFormat.BYTES_PER_SAMPLE, "Unsupported sample size")
@@ -111,14 +192,24 @@ internal object PcmWire {
         val size = reader.readUnsignedShort()
         validate(sequence, capturedNanos, hops, size)
         val pcm = ByteArray(PcmFormat.FRAME_BYTES).also(reader::readFully)
-        return AudioFrame(sessionId, sequence, capturedNanos, hops, pcm)
+        return PcmPacket(AudioFrame(sessionId, sequence, capturedNanos, hops, pcm))
     }
 
     private fun validate(sequence: Long, capturedNanos: Long, hops: Int, size: Int) {
         checkWire(sequence >= 0, "Invalid frame sequence")
-        checkWire(capturedNanos >= 0, "Invalid frame timestamp")
+        checkWire(capturedNanos in 0..(Long.MAX_VALUE - PcmFormat.PLAYOUT_DELAY_NANOS), "Invalid frame timestamp")
         checkWire(hops in 1..PcmFormat.MAX_HOPS, "Invalid hop count")
         checkWire(size == PcmFormat.FRAME_BYTES, "Invalid PCM length")
+    }
+
+    private fun validateClock(sentNanos: Long, hops: Int) {
+        checkWire(sentNanos >= 0, "Invalid clock timestamp")
+        checkWire(hops in 1..PcmFormat.MAX_HOPS, "Invalid clock hop count")
+    }
+
+    private fun ByteBuffer.putUuid(value: UUID) {
+        putLong(value.mostSignificantBits)
+        putLong(value.leastSignificantBits)
     }
 
     private fun proof(key: ByteArray, sender: Hello, receiver: Hello): ByteArray {

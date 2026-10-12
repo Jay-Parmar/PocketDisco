@@ -45,7 +45,7 @@ class PcmWireTest {
 
     @Test
     fun `format fields are strict`() {
-        val edits = listOf<Pair<Int, Byte>>(0 to 0, 4 to 2, 5 to 1, 9 to 2, 10 to 4, 11 to 10)
+        val edits = listOf<Pair<Int, Byte>>(0 to 0, 4 to 1, 5 to 1, 9 to 2, 10 to 4, 11 to 10)
         for ((offset, value) in edits) {
             val bytes = encode(frame).apply { this[offset] = value }
             assertThrows(IOException::class.java) { PcmWire.readFrame(ByteArrayInputStream(bytes)) }
@@ -116,6 +116,70 @@ class PcmWireTest {
         for (code in listOf("", "1234", "0123456789abcdef0123456789abcdeg", "0123456789abcdef0123456789abcdef ")) {
             assertThrows(IllegalArgumentException::class.java) { PcmWire.key(code) }
         }
+    }
+
+    @Test
+    fun `clock requests and replies preserve boundaries among PCM frames`() {
+        val request = ClockRequest(frame.sessionId, UUID.randomUUID(), 100, 2)
+        val reply = ClockReply(request.sessionId, request.requestId, 100, 200, 210, 2)
+        val bytes = ByteArrayOutputStream()
+        PcmWire.writePacket(bytes, request)
+        PcmWire.writePacket(bytes, PcmPacket(frame))
+        PcmWire.writePacket(bytes, reply)
+        val input = ByteArrayInputStream(bytes.toByteArray())
+        assertEquals(request, PcmWire.readPacket(input))
+        assertEquals(frame.sequence, (PcmWire.readPacket(input) as PcmPacket).frame.sequence)
+        assertEquals(reply, PcmWire.readPacket(input))
+        assertEquals(0, input.available())
+    }
+
+    @Test
+    fun `clock messages have fixed length and reject truncation or v1`() {
+        val request = ClockRequest(frame.sessionId, UUID.randomUUID(), 100, 1)
+        val reply = ClockReply(request.sessionId, request.requestId, 100, 200, 210, 1)
+        for ((packet, size) in listOf(request to 46, reply to 62)) {
+            val bytes = ByteArrayOutputStream().also { PcmWire.writePacket(it, packet) }.toByteArray()
+            assertEquals(size, bytes.size)
+            for (length in 0 until size) {
+                assertThrows(EOFException::class.java) {
+                    PcmWire.readPacket(ByteArrayInputStream(bytes.copyOf(length)))
+                }
+            }
+            bytes[4] = 1
+            assertThrows(IOException::class.java) { PcmWire.readPacket(ByteArrayInputStream(bytes)) }
+        }
+    }
+
+    @Test
+    fun `clock writers and readers reject invalid time and hop values`() {
+        val request = ClockRequest(frame.sessionId, UUID.randomUUID(), 100, 1)
+        val reply = ClockReply(request.sessionId, request.requestId, 100, 200, 210, 1)
+        val invalid: List<RelayPacket> = listOf(
+            request.copy(sentNanos = -1), request.copy(hops = 0), request.copy(hops = 4),
+            reply.copy(sentNanos = -1), reply.copy(hops = 0), reply.copy(hops = 4),
+            reply.copy(rootReceivedNanos = -1), reply.copy(rootSentNanos = 199),
+        )
+        for (packet in invalid) {
+            val bytes = ByteArrayOutputStream()
+            assertThrows(IOException::class.java) { PcmWire.writePacket(bytes, packet) }
+            assertEquals(0, bytes.size())
+        }
+        for (packet in listOf(request, reply)) {
+            val bytes = ByteArrayOutputStream().also { PcmWire.writePacket(it, packet) }.toByteArray()
+            bytes[bytes.lastIndex] = 4
+            assertThrows(IOException::class.java) { PcmWire.readPacket(ByteArrayInputStream(bytes)) }
+        }
+        val bytes = ByteArrayOutputStream().also { PcmWire.writePacket(it, reply) }.toByteArray()
+        ByteBuffer.wrap(bytes).putLong(53, 199)
+        assertThrows(IOException::class.java) { PcmWire.readPacket(ByteArrayInputStream(bytes)) }
+    }
+
+    @Test
+    fun `timestamp leaves room for the shared playback delay`() {
+        assertThrows(IOException::class.java) { encode(frame.copy(capturedNanos = Long.MAX_VALUE)) }
+        val bytes = encode(frame)
+        ByteBuffer.wrap(bytes).putLong(36, Long.MAX_VALUE)
+        assertThrows(IOException::class.java) { PcmWire.readFrame(ByteArrayInputStream(bytes)) }
     }
 
     private fun encode(value: AudioFrame): ByteArray = ByteArrayOutputStream().also {
