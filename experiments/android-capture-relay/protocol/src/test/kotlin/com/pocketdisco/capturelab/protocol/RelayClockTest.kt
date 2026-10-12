@@ -9,6 +9,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
@@ -108,23 +109,35 @@ class RelayClockTest {
 
     @Test
     fun `stale clocks continue forwarding raw frames without timed output`() {
-        val jump = AtomicLong()
+        val frozenClock = AtomicLong()
+        val resumeTiming = CountDownLatch(1)
         val timed = CopyOnWriteArrayList<TimedAudioFrame>()
         val raw = CopyOnWriteArrayList<AudioFrame>()
         val source = node()
-        val relay = node(onTimedFrame = { timed.add(it) }, clockNanos = { System.nanoTime() + jump.get() })
+        val relay = node(onFrame = {
+            if (it.sequence == 1L) check(resumeTiming.await(3, TimeUnit.SECONDS))
+        }, onTimedFrame = { timed.add(it) }, clockNanos = {
+            frozenClock.get().takeIf { it != 0L } ?: System.nanoTime()
+        })
         val receiver = node(onFrame = { raw.add(it) })
         connect(source, relay)
         connect(relay, receiver)
         source.publish(pcm)
         await { relay.snapshot().clockReady && receiver.snapshot().clockReady }
-        jump.set(6_000_000_000)
+        frozenClock.set(System.nanoTime() + RootClock.MAX_AGE_NANOS + 1)
         assertFalse(relay.snapshot().clockReady)
-        source.publish(pcm)
-        await { raw.size == 2 }
-        assertTrue(timed.isEmpty())
-        assertEquals(2L, relay.snapshot().unscheduledFrames)
-        assertTrue(receiver.snapshot().clockReady)
+        try {
+            source.publish(pcm)
+            await { raw.size == 2 }
+            resumeTiming.countDown()
+            await { relay.snapshot().unscheduledFrames == 2L }
+            assertTrue(timed.isEmpty())
+            assertEquals(2L, relay.snapshot().unscheduledFrames)
+            assertFalse(relay.snapshot().clockReady)
+            assertTrue(receiver.snapshot().clockReady)
+        } finally {
+            resumeTiming.countDown()
+        }
     }
 
     @Test
