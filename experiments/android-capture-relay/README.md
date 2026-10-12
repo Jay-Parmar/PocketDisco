@@ -17,7 +17,7 @@ is no automatic discovery or unrestricted mesh.
 
 ## Build
 
-Use JDK 17, Android platform 37 and build tools 37.0.0. Point `JAVA_HOME`,
+Use JDK 17, SDK package `platforms;android-37.0` and build tools 37.0.0. Point `JAVA_HOME`,
 `ANDROID_HOME`, `ANDROID_USER_HOME` and `GRADLE_USER_HOME` at the repository's
 local tools. The mobile wrapper supplies Gradle 9.5.0. From the repository root:
 
@@ -26,7 +26,11 @@ apps/mobile/android/gradlew.bat -p experiments/android-capture-relay :protocol:t
 ```
 
 Use `bash apps/mobile/android/gradlew` instead on Linux. No React Native or
-Metro setup is needed for these apps.
+Metro setup is needed for these apps. The SDK packages can be installed with:
+
+```text
+sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
+```
 
 | App | Package | APK, relative to this directory |
 |---|---|---|
@@ -37,6 +41,11 @@ These are debug diagnostics, not Play artifacts. They do not replace
 PocketDisco or the installed music app. Install Capture Lab on every test
 phone and Test Source on the sending phone. The [source notes](source/README.md)
 describe the generated tone and bundled MP3 provenance.
+
+CI and local debug builds may use different signing keys. Android will not
+update an installed package with an APK signed by a different key. Use APKs
+from one build for a test run; do not automatically uninstall existing apps
+to work around a signature mismatch.
 
 ## Three-phone paired-Bluetooth check
 
@@ -99,11 +108,14 @@ adb -s PHONE_SERIAL forward --remove tcp:18990
 
 ## Metrics and privacy
 
-**Refresh metrics** and **Stop session** write an app-private `files/report.json`.
+While a session is active, the app updates its private `files/report.json`
+about once a second. **Refresh metrics** and **Stop session** also write it.
+Tap **Show details** to see the full snapshot in the app.
 It contains frame counts, peaks, hashes, relay state and output progress, not
-raw audio or the join code. Raw captured PCM stays in bounded memory queues
-and is never saved or uploaded. The generated files in Test Source are not
-recordings of captured audio.
+raw audio or the join code. Captured PCM uses bounded memory queues and is
+transmitted over the selected direct test links. It is not saved or sent to
+the backend. The generated files in Test Source are not recordings of captured
+audio.
 
 The code is retained in app-private preferences until changed. Use a new code
 for a new group and do not include it in screenshots, issues or test reports.
@@ -116,5 +128,7 @@ adb -s DEVICE_SERIAL shell run-as com.pocketdisco.capturelab cat files/report.js
 Compare the first-100-frame hashes only when peers joined before capture and
 the same frame window arrived without drops. Late joins and reconnects can
 produce different windows. AudioTrack progress demonstrates output activity,
-not measured sound at the speakers. CI runs JVM tests, lint and builds only;
-physical Bluetooth and acoustic results must be recorded separately.
+not measured sound at the speakers. The [device runner](../../tools/capture_relay_e2e/README.md)
+checks matching non-silent frame hashes and software playback activity.
+CI runs JVM tests, host-only runner tests, lint and builds. It does not run
+device tests; physical Bluetooth and acoustic results must be recorded separately.
