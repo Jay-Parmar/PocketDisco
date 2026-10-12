@@ -6,6 +6,9 @@ is based on PR 9; nothing was merged. The owner requested synchronized playback,
 private rooms using the installed music app, and Play readiness. Two physical
 phones and the emulator were available for the checks below.
 
+Current handoff: the Samsung has locked. Its owner must unlock it before the
+fixed-build sustained test and product-entry retry can run. PR 10 stays draft.
+
 ## Scope
 
 This implementation schedules captured PCM against one source clock.
@@ -61,12 +64,12 @@ sound. AudioTrack timestamps are software evidence, not acoustic measurements.
 
 ## Verified results
 
-- 90 capture JVM tests pass: 56 protocol, 29 shared-core and 5 source tests.
+- 94 capture JVM tests pass: 60 protocol, 29 shared-core and 5 source tests.
   A CI failure exposed an observation race in the stale-clock test. A
   controlled callback barrier now reproduces that ordering; ten complete
   protocol reruns passed without relaxing assertions or changing production
   behavior.
-- 43 capture-runner and 13 mobile-runner host tests pass.
+- 56 capture-runner and 13 mobile-runner host tests pass.
 - 135 mobile JavaScript tests, TypeScript and ESLint pass. All 36 product-native
   tests pass. Android lint has no errors for the lab, source, shared core,
   internal product or release variant. Compatibility warnings remain.
@@ -93,8 +96,9 @@ All four checks passed in each of these three-device runs:
 Each check established two authenticated receivers, scheduled output, matching
 first-100-non-silent-frame PCM hashes, and advancing output with fresh reports.
 There were no additional resyncs, output/relay drops, late frames or inserted
-silence during the sampled windows. Startup calibration had already caused
-one or two resyncs on some receivers, discarding 73 to 162 output frames.
+silence during the sampled windows. Startup calibration/rebuffering had
+already caused one or two resyncs on some receivers, discarding 73 to 162
+output frames.
 
 | Run / receiver | Reported output error, ms | Clock uncertainty, ms |
 |---|---|---|
@@ -109,7 +113,8 @@ These are short software observations against each receiver's estimated
 deadline, not acoustic skew, a p95 result or eight independent start trials.
 Prefix hashes do not prove an entire session. Clock uncertainty is separate
 from the reported output error. The source's original speaker remains outside
-this timeline, and a third physical Bluetooth hop has not been tested.
+this timeline. Three physical phones linked across two Bluetooth hops have
+not been tested.
 
 Other completed device checks:
 
@@ -132,15 +137,37 @@ precondition. They are not counted as passing runs.
 
 ## Test artifacts
 
-Copies of the tested runtime builds are preserved in
-`.local-tools/capture-relay-lab/artifacts/5a6f5dd/`. Later commits harden tests
-and update documentation without changing those runtime binaries.
+The short device runs above used builds preserved in
+`.local-tools/capture-relay-lab/artifacts/5a6f5dd/`.
+
+A subsequent continuous-tone run, `sync-usb-soak-01`, failed after its four
+short checks and three additional five-second samples. Samsung lost its link;
+the source reported `Peer write timeout` with no queue drops. Samsung stopped
+scheduled output when its clock was lost. The failed run is retained.
+
+Code review found a watchdog race: the timeout predicate read its deadline
+twice, and a completed write could clear it between those reads. A deterministic
+test reproduced that false expiry. Commit `ff12795` reads one snapshot and
+protects timeout decisions and deadline updates with the same short state lock.
+Transport I/O stays outside the lock. No timeout or queue limit was widened.
+All 60 protocol tests passed in six complete runs after the fix. This supports
+the diagnosis, but does not replace a new hardware soak.
+
+The fixed runtime candidates are in
+`.local-tools/capture-relay-lab/artifacts/ff12795/`. Build, unit tests, lint and
+APK signatures pass; the post-fix sustained hardware run is pending unlock.
 
 | APK | SHA256 |
 |---|---|
-| `PocketDisco-internal.apk` | `ad66a0a8da6b1db5d9d977b36a5675be5367afcf97b45d73dea790f4c511c374` |
-| `PocketDisco-Capture-Lab-debug.apk` | `d0eb2b6f96966f28f02325a2dcc4ef0a8ef92b039a9d10c083199b6a3f724b7b` |
+| `PocketDisco-internal.apk` | `726c6de3263238e565c16d950451505ad7247487a8df6473299ebfeeeb2e6180` |
+| `PocketDisco-Capture-Lab-debug.apk` | `d45b0b4737c138f9a99a585f8e1390bec72c7aa170632e28979f3314de64999d` |
 | `PocketDisco-Test-Source-debug.apk` | `c4ad5215880889f54734d633099aba7a4d7f9a9c610babbef2efc565c83cc906` |
+
+Capture Lab is updated on all three devices. The product is updated on Samsung.
+Android rejected product updates on Nothing and the emulator because their
+older internal packages have a different signing key. Those apps and their
+saved guest sessions remain untouched. Replacement needs the owner's approval;
+it is not required for the separate Capture Lab tests.
 
 For a third-phone nearby test, install Capture Lab on it and use the same
 new session code on all peers. Follow the [paired-Bluetooth runbook](../experiments/android-capture-relay/README.md#three-phone-paired-bluetooth-check).
@@ -155,17 +182,22 @@ only and is not the third-phone test artifact.
 
 ## Remaining work
 
-1. Measure actual receiver-speaker skew over ten starts and longer playback,
+1. Unlock Samsung, then rerun USB fan-out with the tracked runner's
+   `--samples 180` option in a fresh output directory. It now requires new
+   non-silent audio and unchanged peer/recovery/drop counters for every sample,
+   retaining partial samples and final device reports on failure. Repeat the
+   Bluetooth local-file and product-entry checks on the fixed APKs.
+2. Measure actual receiver-speaker skew over ten starts and longer playback,
    including route changes, dropout recovery and a third physical Bluetooth
    node. The nominal capture-sample timeline is not hardware-clock drift
    tracking; longer sessions need measurement.
-2. Resolve the product source and rights before public capture distribution.
+3. Resolve the product source and rights before public capture distribution.
    A local-file test inside the installed music app does not establish rights
    or capture support for its provider catalog. Do not bypass blocked sources.
-3. Implement Internet-room prepare/commit and the independent-file timeline
+4. Implement Internet-room prepare/commit and the independent-file timeline
    separately. The internal nearby card does not complete shared Internet
    playback or couple room membership to nearby admission.
-4. Complete the release gates below. Keep desktop and unrestricted mesh work
+5. Complete the release gates below. Keep desktop and unrestricted mesh work
    paused; neither was added in this milestone.
 
 ## Play gates remain open
