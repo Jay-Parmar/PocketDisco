@@ -1,9 +1,10 @@
 import json
 import unittest
+from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 from xml.etree.ElementTree import Element
 
-from run import Device, Forward, LAB, PORT, audio_proof, bounds, silence_proof
+from run import Device, Forward, LAB, LAUNCHERS, MUSIC, PORT, SOURCE, SYSTEM, audio_proof, bounds, passed_check, silence_proof, utc_now
 
 
 class HelpersTest(unittest.TestCase):
@@ -61,9 +62,25 @@ class HelpersTest(unittest.TestCase):
     def test_persistent_empty_focus_stops_the_test(self):
         device = Device("adb", "test", "phone")
         with patch.object(device, "foreground", return_value="") as foreground, patch("run.time.sleep"):
-            with self.assertRaises(AssertionError):
+            with self.assertRaisesRegex(AssertionError, "focus: none"):
                 device.check_foreground({LAB})
         self.assertEqual(foreground.call_count, 10)
+
+    def test_foreground_failure_identifies_only_known_packages(self):
+        device = Device("adb", "test", "phone")
+        for package in {LAB, SOURCE, MUSIC, *SYSTEM, *LAUNCHERS}:
+            with self.subTest(package=package), patch.object(device, "foreground", return_value=package):
+                with self.assertRaises(AssertionError) as error:
+                    device.check_foreground(set())
+                self.assertIn(f"focus: {package}", str(error.exception))
+
+    def test_foreground_failure_redacts_unknown_package(self):
+        device = Device("adb", "test", "phone")
+        with patch.object(device, "foreground", return_value="private.other.app"):
+            with self.assertRaises(AssertionError) as error:
+                device.check_foreground({LAB})
+        self.assertIn("focus: another app", str(error.exception))
+        self.assertNotIn("private.other.app", str(error.exception))
 
     def test_waits_for_only_the_expected_activity_transition(self):
         device = Device("adb", "test", "phone")
@@ -125,6 +142,42 @@ class HelpersTest(unittest.TestCase):
         with patch.object(device, "foreground", return_value="com.android.systemui"), patch.object(device, "nodes", return_value=[cancel]), patch.object(device, "tap_node") as tap:
             device.dismiss_projection()
         tap.assert_not_called()
+
+
+class EvidenceTest(unittest.TestCase):
+    def test_passed_check_preserves_observations_after_reconnect(self):
+        phone, emulator = Device("adb", "host", "phone"), Device("adb", "peer", "emulator")
+        phone.latest = {"sentPcm": {"first100AudibleFramesSha256": "matching", "frames": 100}}
+        emulator.latest = {"receivedPcm": {"first100AudibleFramesSha256": "matching", "frames": 100}}
+        with patch("run.utc_now", return_value="2026-10-12T10:00:00Z"):
+            check = passed_check("matching PCM", phone, emulator)
+        phone.latest["sentPcm"]["frames"] = 200
+        emulator.latest["receivedPcm"]["first100AudibleFramesSha256"] = "reset"
+        phone.latest = {"active": False}
+        emulator.latest = {"receivedPcm": {"first100AudibleFramesSha256": "new session", "frames": 10}}
+        self.assertEqual(check, {
+            "name": "matching PCM",
+            "result": "passed",
+            "recordedAtUtc": "2026-10-12T10:00:00Z",
+            "latestObservations": {
+                "phone": {"sentPcm": {"first100AudibleFramesSha256": "matching", "frames": 100}},
+                "emulator": {"receivedPcm": {"first100AudibleFramesSha256": "matching", "frames": 100}},
+            },
+        })
+        self.assertEqual(json.loads(json.dumps(check)), check)
+
+    def test_passed_check_does_not_read_devices(self):
+        phone, emulator = Device("adb", "host", "phone"), Device("adb", "peer", "emulator")
+        with patch.object(Device, "report") as report, patch.object(Device, "command") as command:
+            check = passed_check("no recent observations", phone, emulator)
+        self.assertEqual(check["latestObservations"], {"phone": {}, "emulator": {}})
+        report.assert_not_called()
+        command.assert_not_called()
+
+    def test_timestamps_are_explicit_utc(self):
+        value = utc_now()
+        self.assertTrue(value.endswith("Z"))
+        self.assertEqual(datetime.fromisoformat(value.replace("Z", "+00:00")).utcoffset(), timedelta(0))
 
 
 class ForwardTest(unittest.TestCase):

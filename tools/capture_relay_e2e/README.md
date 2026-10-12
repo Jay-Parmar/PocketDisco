@@ -17,6 +17,11 @@ Each completed check prints `PASS`. Failures return a nonzero exit code.
 These are the intended checks, not a statement that a particular run passed.
 Review that run's `results.json`, including failure entries and the transport.
 Use a fresh output directory for every run to preserve earlier failure evidence.
+Each passed check saves deep-copied `latestObservations` from both devices, so
+later reconnects do not replace earlier hash evidence. These are the latest
+already-read reports, not new or simultaneous device readings. `recordedAtUtc`
+marks when the snapshot was copied; run start and finish times are also UTC.
+The top-level `phone` and `emulator` fields contain only the final observations.
 
 The transport is phone loopback -> ADB -> PC loopback -> emulator. It does not
 test physical Bluetooth, radio range, acoustic output, or audible synchronization.
@@ -24,9 +29,15 @@ Port 18990 must not have an existing ADB forward. The runner refuses conflicts
 and removes only the mapping it created. It force-stops only the two diagnostic
 packages at the start and end, without clearing their data or changing settings.
 An unexpected foreground app stops UI interaction.
+Failure messages identify known test, system, and launcher packages only;
+unrelated foreground packages are reported as `another app`.
 
 `--music-file` runs a separate generated MP3-file check in the already installed
-music app. It opens no catalog content and grants no music-app permissions.
+music app. First it checks UID isolation: capture selects the music app while
+the companion source plays an allowed tone, and capture must remain silent.
+It then opens the generated MP3 in the music app and checks matching PCM and
+receiver playback progress. This mode skips the blocked-source and receiver
+reconnect checks. It opens no catalog content and grants no music-app permissions.
 The music app must already allow local audio access. Cleanup uses Back from the
 local preview, never force-stop or data clearing. This result does not establish
 capture permission for other content or provider approval. Use the source APK

@@ -6,6 +6,8 @@ import subprocess
 import time
 import traceback
 import xml.etree.ElementTree as ET
+from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 
 LAB = "com.pocketdisco.capturelab"
@@ -14,6 +16,19 @@ MUSIC = "app.revanced.android.apps.youtube.music"
 PORT = "tcp:18990"
 SYSTEM = {"com.android.systemui", "com.android.permissioncontroller", "com.google.android.permissioncontroller"}
 LAUNCHERS = {"com.android.launcher3", "com.google.android.apps.nexuslauncher", "com.nothing.launcher"}
+
+
+def utc_now():
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def passed_check(name, phone, emulator):
+    return {
+        "name": name,
+        "result": "passed",
+        "recordedAtUtc": utc_now(),
+        "latestObservations": {"phone": deepcopy(phone.latest), "emulator": deepcopy(emulator.latest)},
+    }
 
 
 def names_lab(nodes):
@@ -52,7 +67,9 @@ class Device:
             if focused or attempt == 9:
                 break
             time.sleep(.1)
-        raise AssertionError(f"{self.label}: unexpected foreground or locked screen; no interaction attempted")
+        known = {LAB, SOURCE, MUSIC, *SYSTEM, *LAUNCHERS}
+        focus_label = focused if focused in known else "another app" if focused else "none"
+        raise AssertionError(f"{self.label}: unexpected foreground or locked screen (focus: {focus_label}); no interaction attempted")
 
     def launch(self, package=LAB):
         activity = "SourceActivity" if package == SOURCE else "MainActivity"
@@ -280,11 +297,12 @@ def main():
     if (output / "results.json").exists():
         parser.error("Use a new output directory to preserve earlier test results")
     output.mkdir(parents=True, exist_ok=True)
+    started_at = utc_now()
     phone, emulator = Device(args.adb, args.phone, "phone"), Device(args.adb, args.emulator, "emulator")
     checks, touched = [], []
 
     def passed(name):
-        checks.append({"name": name, "result": "passed"})
+        checks.append(passed_check(name, phone, emulator))
         print(f"PASS {name}", flush=True)
 
     try:
@@ -315,7 +333,7 @@ def main():
                     device.command("shell", "am", "force-stop", package)
                 except RuntimeError:
                     checks.append({"name": f"{device.label} cleanup", "result": "failed"})
-        result = {"transport": "ADB loopback TCP", "physicalBluetoothTested": False, "audibleSyncMeasured": False, "musicLocalFile": args.music_file, "checks": checks, "phone": phone.latest, "emulator": emulator.latest}
+        result = {"startedAtUtc": started_at, "finishedAtUtc": utc_now(), "transport": "ADB loopback TCP", "physicalBluetoothTested": False, "audibleSyncMeasured": False, "musicLocalFile": args.music_file, "checks": checks, "phone": phone.latest, "emulator": emulator.latest}
         (output / "results.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     return int(any(check["result"] == "failed" for check in checks))
 
