@@ -292,6 +292,130 @@ test('retains room and invite after a failed resume and can retry', async () => 
   expect(room.state.inviteCode).toBe(inviteCode);
 });
 
+test('clears a cold-start connection error after foreground recovery', async () => {
+  mockResume.mockRejectedValueOnce(
+    new ClientError('network_error', 'Offline', true),
+  );
+  await render();
+  expect(room.error).not.toBeNull();
+  await changeState('background');
+  await changeState('active');
+  expect(room.state.connection).toBe('connected');
+  expect(room.error).toBeNull();
+});
+
+test('clears a foreground resume error after a later recovery', async () => {
+  AppState.currentState = 'background';
+  mockResume.mockRejectedValueOnce(
+    new ClientError('network_error', 'Offline', true),
+  );
+  await render();
+  await changeState('active');
+  expect(room.error).toBe('Offline');
+  await changeState('background');
+  await changeState('active');
+  expect(room.state.connection).toBe('connected');
+  expect(room.error).toBeNull();
+});
+
+test('keeps a recovery error until a connected snapshot arrives', async () => {
+  mockResume.mockRejectedValueOnce(
+    new ClientError('network_error', 'Offline', true),
+  );
+  await render();
+  mockResume.mockImplementationOnce(async client => {
+    client.emit({ snapshot, connection: 'connecting', error: null });
+    return snapshot;
+  });
+  await changeState('background');
+  await changeState('active');
+  expect(room.state.connection).toBe('connecting');
+  expect(room.error).not.toBeNull();
+  await act(async () =>
+    currentClient().emit({ connection: 'connected', error: null }),
+  );
+  expect(room.error).toBeNull();
+});
+
+test('clears a failed manual retry after automatic recovery', async () => {
+  const offline = new ClientError('network_error', 'Offline', true);
+  mockResume.mockRejectedValueOnce(offline).mockRejectedValueOnce(offline);
+  await render();
+  await act(async () => room.retry());
+  expect(room.error).toBe('Offline');
+  await changeState('background');
+  await changeState('active');
+  expect(room.state.connection).toBe('connected');
+  expect(room.error).toBeNull();
+});
+
+test.each(['foreground', 'retry'])(
+  '%s recovery preserves a secure storage failure',
+  async recovery => {
+    await render();
+    native.save.mockRejectedValueOnce(new Error('Storage unavailable'));
+    await act(async () =>
+      currentClient().emit({
+        session: { ...session, refresh_token: 'rotated-refresh' },
+      }),
+    );
+    expect(room.error).toContain('Could not save your session securely.');
+    if (recovery === 'foreground') {
+      await changeState('background');
+      await changeState('active');
+    } else {
+      await act(async () => room.retry());
+    }
+    expect(room.state.connection).toBe('connected');
+    expect(room.error).toContain('Could not save your session securely.');
+  },
+);
+
+test('a delayed recovery keeps a newer chat failure with the same message', async () => {
+  await render();
+  const client = currentClient();
+  client.reconnect.mockRejectedValueOnce(
+    new ClientError('network_error', 'Offline', true),
+  );
+  await changeState('background');
+  await changeState('active');
+  expect(room.error).toBe('Offline');
+  const reconnect = deferred<void>();
+  client.reconnect.mockImplementationOnce(async () => {
+    await reconnect.promise;
+    client.emit({ connection: 'connected', error: null });
+  });
+  await changeState('background');
+  await changeState('active');
+  const issue = new ClientError('network_error', 'Offline', true);
+  client.sendChat.mockRejectedValueOnce(issue);
+  await act(async () => {
+    await expect(room.send('Hello')).rejects.toBe(issue);
+  });
+  await act(async () => reconnect.resolve(undefined));
+  expect(room.state.connection).toBe('connected');
+  expect(room.error).toBe('Offline');
+});
+
+test('a failed recovery does not replace a newer operation error', async () => {
+  await render();
+  const client = currentClient();
+  const reconnect = deferred<void>();
+  client.reconnect.mockReturnValueOnce(reconnect.promise);
+  await changeState('background');
+  await changeState('active');
+  client.setReady.mockRejectedValueOnce(
+    new ClientError('not_allowed', 'Readiness was not saved.'),
+  );
+  await act(async () => {
+    await room.setReady(true);
+  });
+  await act(async () =>
+    reconnect.reject(new ClientError('network_error', 'Offline', true)),
+  );
+  expect(room.error).toBe('Readiness was not saved.');
+});
+
 test('reconciles a background and foreground change during resume', async () => {
   const resume = deferred<RoomSnapshot>();
   mockResume.mockImplementation(async (client, _id, code) => {

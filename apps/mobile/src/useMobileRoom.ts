@@ -5,6 +5,8 @@ import type { ClientState } from '../../../packages/domain/src/types';
 import DeviceSession from './native/NativeDeviceSession';
 import { readSavedSession } from './session';
 
+type LocalError = { message: string; connectionClient?: RoomClient };
+
 function message(error: unknown) {
   return error instanceof Error
     ? error.message
@@ -45,7 +47,7 @@ export function useMobileRoom() {
     null,
   );
   const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<LocalError | null>(null);
   const [dismissedError, setDismissedError] =
     useState<ClientState['error']>(null);
   const unsubscribe = useRef(() => {});
@@ -71,6 +73,15 @@ export function useMobileRoom() {
     savedRoomId.current = null;
     savedInvite.current = null;
     hadSnapshot.current = false;
+  }
+
+  function connectionFailed(client: RoomClient, failure: unknown) {
+    if (!active.current || client !== clientRef.current) return;
+    setError(current =>
+      current && !current.connectionClient
+        ? current
+        : { message: message(failure), connectionClient: client },
+    );
   }
 
   function persist(
@@ -102,9 +113,10 @@ export function useMobileRoom() {
     operation.catch(() => {
       if (lastQueued.current === record) lastQueued.current = undefined;
       if (active.current)
-        setError(
-          'Could not save your session securely. Keep the app open and retry.',
-        );
+        setError({
+          message:
+            'Could not save your session securely. Keep the app open and retry.',
+        });
     });
     return operation;
   }
@@ -120,6 +132,10 @@ export function useMobileRoom() {
       if (!active.current || client !== clientRef.current) return;
       persist(next).catch(() => {});
       setState(next);
+      if (next.connection === 'connected' && next.error === null)
+        setError(current =>
+          current?.connectionClient === client ? null : current,
+        );
     });
   }
 
@@ -179,8 +195,7 @@ export function useMobileRoom() {
         client.disconnect();
       } else {
         connectCurrent(client).catch(failure => {
-          if (isCurrent() && client === clientRef.current)
-            setError(message(failure));
+          if (isCurrent()) connectionFailed(client, failure);
         });
       }
     });
@@ -205,13 +220,17 @@ export function useMobileRoom() {
         await persist(clientRef.current!.getState());
         if (!isCurrent()) return;
         readyToResume.current = true;
-        await connectCurrent(clientRef.current!);
+        const client = clientRef.current!;
+        await connectCurrent(client).catch(failure => {
+          if (isCurrent()) connectionFailed(client, failure);
+        });
       })
       .catch(() => {
         if (isCurrent())
-          setError(
-            'Could not reopen your last session. Check your connection or join again.',
-          );
+          setError({
+            message:
+              'Could not reopen your last session. Check your connection or join again.',
+          });
       })
       .finally(async () => {
         if (!isCurrent()) return;
@@ -234,15 +253,17 @@ export function useMobileRoom() {
   async function run<T>(
     kind: 'creating' | 'joining' | 'room',
     task: () => Promise<T>,
+    connectionClient?: RoomClient,
   ): Promise<T | undefined> {
     if (actionPending.current || booting) return;
     actionPending.current = true;
     setBusy(kind);
-    setError(null);
+    if (!connectionClient) setError(null);
     try {
       return await task();
     } catch (failure) {
-      if (active.current) setError(message(failure));
+      if (connectionClient) connectionFailed(connectionClient, failure);
+      else if (active.current) setError({ message: message(failure) });
     } finally {
       actionPending.current = false;
       if (active.current) setBusy(null);
@@ -270,7 +291,7 @@ export function useMobileRoom() {
       state.session !== null &&
       state.snapshot === null,
     error:
-      error ??
+      error?.message ??
       (state.error === dismissedError ? null : state.error?.message) ??
       null,
     showServerSettings: settings.allowLocalServer,
@@ -300,14 +321,17 @@ export function useMobileRoom() {
       }),
     setReady: (ready: boolean) =>
       run('room', () => clientRef.current!.setReady(ready)),
-    retry: () => run('room', () => connectCurrent(clientRef.current!)),
+    retry: () => {
+      const client = clientRef.current!;
+      return run('room', () => connectCurrent(client), client);
+    },
     send: async (body: string) => {
       setSending(true);
       setError(null);
       try {
         await clientRef.current!.sendChat(body);
       } catch (failure) {
-        if (active.current) setError(message(failure));
+        if (active.current) setError({ message: message(failure) });
         throw failure;
       } finally {
         if (active.current) setSending(false);
