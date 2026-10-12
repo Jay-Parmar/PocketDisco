@@ -4,6 +4,7 @@ import re
 import secrets
 import subprocess
 import time
+import traceback
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -55,7 +56,9 @@ class Device:
 
     def launch(self, package=LAB):
         activity = "SourceActivity" if package == SOURCE else "MainActivity"
-        self.command("shell", "am", "start", "-W", "-n", f"{package}/.{activity}")
+        self.command("shell", "am", "start", "-W", "-a", "android.intent.action.MAIN",
+                     "-c", "android.intent.category.LAUNCHER", "-f", "0x10200000", "-n", f"{package}/.{activity}")
+        self.wait_foreground(package, {LAB, SOURCE, *LAUNCHERS})
 
     def wait_foreground(self, package, transitioning=()):
         for attempt in range(25):
@@ -284,6 +287,7 @@ def main():
     except Exception as error:
         checks.append({"name": "run", "result": "failed", "error": str(error)})
         print(f"FAIL {error}", flush=True)
+        traceback.print_exc()
         for device in (phone, emulator):
             print(json.dumps({"device": device.label, "latest": device.latest}), flush=True)
     finally:

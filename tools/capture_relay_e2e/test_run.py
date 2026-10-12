@@ -72,6 +72,16 @@ class HelpersTest(unittest.TestCase):
         with patch.object(device, "foreground", return_value="other.app"), self.assertRaisesRegex(AssertionError, "unrelated"):
             device.wait_foreground(LAB, {"com.android.systemui"})
 
+    def test_launch_uses_launcher_flags_and_waits_for_focus(self):
+        device = Device("adb", "test", "phone")
+        with patch.object(device, "command") as command, patch.object(device, "wait_foreground") as wait:
+            device.launch()
+        args = command.call_args.args
+        self.assertIn("android.intent.category.LAUNCHER", args)
+        self.assertIn("0x10200000", args)
+        wait.assert_called_once()
+        self.assertEqual(wait.call_args.args[0], LAB)
+
     def test_cancel_projection_after_lab_permissions(self):
         device = Device("adb", "test", "phone")
         permission = "com.android.permissioncontroller"
