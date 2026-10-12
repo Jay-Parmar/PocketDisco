@@ -195,16 +195,20 @@ class RelayNode(
         @Volatile var authenticated = false
         @Volatile var remoteId: UUID? = null
         @Volatile var deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(handshakeTimeoutMillis)
-        private var readerThread: Thread? = null
-        private var writerThread: Thread? = null
+        @Volatile private var readerThread: Thread? = null
+        @Volatile private var writerThread: Thread? = null
 
         fun start() {
-            readerThread = thread(name = "capture-relay-reader", isDaemon = true) {
+            val reader = thread(start = false, name = "capture-relay-reader", isDaemon = true) {
                 try {
+                    if (stopped.get()) return@thread
                     val remoteId = PcmWire.authenticate(input, output, nodeId, key)
                     if (!authenticated(this, remoteId)) return@thread
                     event("Peer connected")
-                    writerThread = thread(name = "capture-relay-writer", isDaemon = true) { writeLoop() }
+                    if (stopped.get()) return@thread
+                    val writer = thread(start = false, name = "capture-relay-writer", isDaemon = true) { writeLoop() }
+                    writerThread = writer
+                    writer.start()
                     while (!stopped.get()) receive(PcmWire.readFrame(input), this)
                 } catch (_: EOFException) {
                     fail("Peer disconnected")
@@ -216,6 +220,8 @@ class RelayNode(
                     shutdown()
                 }
             }
+            readerThread = reader
+            reader.start()
         }
 
         private fun writeLoop() {

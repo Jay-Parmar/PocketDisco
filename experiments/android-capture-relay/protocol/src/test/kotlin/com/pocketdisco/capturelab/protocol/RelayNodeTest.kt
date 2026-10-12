@@ -342,6 +342,44 @@ class RelayNodeTest {
     }
 
     @Test
+    fun `repeated close during peer startup leaves no blocked workers`() {
+        val initialWorkers = relayWorkers()
+        repeat(40) { index ->
+            val a = node()
+            val b = node()
+            if (index % 2 == 0) {
+                connect(a, b)
+            } else {
+                val (left, right) = socketPair()
+                a.attach(left.getInputStream(), left.getOutputStream(), left::close)
+                b.attach(right.getInputStream(), right.getOutputStream(), right::close)
+            }
+            a.close()
+            b.close()
+        }
+        await { (relayWorkers() - initialWorkers).isEmpty() }
+    }
+
+    @Test
+    fun `closing from the authenticated event does not start a waiting writer`() {
+        val initialWorkers = relayWorkers()
+        val closed = CountDownLatch(1)
+        lateinit var relay: RelayNode
+        relay = RelayNode(code, onEvent = { event ->
+            if (event == "Peer connected") {
+                relay.close()
+                closed.countDown()
+            }
+        }).also(resources::add)
+        val (local, remote) = socketPair()
+        relay.attach(local.getInputStream(), local.getOutputStream(), local::close)
+        PcmWire.authenticate(remote.getInputStream(), remote.getOutputStream(), UUID.randomUUID(), PcmWire.key(code))
+        assertTrue(closed.await(2, TimeUnit.SECONDS))
+        assertEquals(0, relay.snapshot().peers)
+        await { (relayWorkers() - initialWorkers).isEmpty() }
+    }
+
+    @Test
     fun `capture input and configuration are validated`() {
         val relay = node()
         assertThrows(IllegalArgumentException::class.java) { relay.publish(ByteArray(10)) }
@@ -392,6 +430,10 @@ class RelayNodeTest {
         while (!check() && System.nanoTime() < deadline) Thread.sleep(5)
         assertTrue("Condition timed out", check())
     }
+
+    private fun relayWorkers(): Set<Thread> = Thread.getAllStackTraces().keys.filter {
+        it.isAlive && it.name in setOf("capture-relay-reader", "capture-relay-writer")
+    }.toSet()
 
     private class GateOutput(private val target: OutputStream) : OutputStream() {
         @Volatile var enabled = false
