@@ -54,6 +54,32 @@ class HelpersTest(unittest.TestCase):
             self.assertEqual(device.foreground(), LAB)
         command.assert_called_once_with("shell", "dumpsys", "window")
 
+    def test_named_system_dialog_uses_its_actual_window_owner(self):
+        device = Device("adb", "test", "phone")
+        focus = "mCurrentFocus=Window{abc u0 Stop sharing?}"
+        windows = ("  Window #0 Window{abc u0 Stop sharing?}:\n"
+                   "    mOwnerUid=10185 showForAllUsers=true package=com.android.systemui appop=NONE\n"
+                   "  Window #1 Window{def u0 Other}:\n"
+                   "    mOwnerUid=10001 package=other.app\n")
+        with patch.object(device, "command", side_effect=[focus, windows]):
+            self.assertEqual(device.foreground(), "com.android.systemui")
+
+    def test_window_title_cannot_impersonate_a_system_package(self):
+        device = Device("adb", "test", "phone")
+        focus = "mCurrentFocus=Window{abc u0 com.android.systemui}"
+        windows = ("  Window #0 Window{abc u0 com.android.systemui}:\n"
+                   "    mOwnerUid=10001 package=other.app\n")
+        with patch.object(device, "command", side_effect=[focus, windows]):
+            self.assertEqual(device.foreground(), "other.app")
+
+    def test_missing_focused_window_does_not_use_another_owner(self):
+        device = Device("adb", "test", "phone")
+        focus = "mCurrentFocus=Window{abc u0 Stop sharing?}"
+        windows = ("  Window #0 Window{def u0 Stop sharing?}:\n"
+                   "    mOwnerUid=10185 package=com.android.systemui\n")
+        with patch.object(device, "command", side_effect=[focus, windows]):
+            self.assertEqual(device.foreground(), "")
+
     def test_empty_focus_gets_a_bounded_transition_retry(self):
         device = Device("adb", "test", "phone")
         with patch.object(device, "foreground", side_effect=["", "", LAB]), patch("run.time.sleep"):

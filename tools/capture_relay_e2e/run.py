@@ -56,8 +56,17 @@ class Device:
 
     def foreground(self):
         raw = self.command("shell", "dumpsys", "window")
-        match = re.search(r"mCurrentFocus=Window\{[^\n]*?\bu\d+\s+([\w.]+)(?:/|\s|\})", raw)
-        return match.group(1) if match else ""
+        match = re.search(r"mCurrentFocus=Window\{(\w+)\s+u\d+\s+([^\n}]+)\}", raw)
+        if not match:
+            return ""
+        component = re.match(r"([\w.]+)/", match.group(2))
+        if component:
+            return component.group(1)
+        windows = self.command("shell", "dumpsys", "window", "windows")
+        marker = r"^\s*Window #\d+ Window\{" + re.escape(match.group(1)) + r"\s+[^\n]+:\s*\n"
+        block = re.search(marker + r"(.*?)(?=^\s*Window #\d+ |\Z)", windows, re.MULTILINE | re.DOTALL)
+        owner = re.search(r"\bmOwnerUid=\d+[^\n]*\bpackage=([\w.]+)", block.group(1)) if block else None
+        return owner.group(1) if owner else ""
 
     def check_foreground(self, allowed):
         for attempt in range(10):
