@@ -63,12 +63,11 @@ class RelayNode(
     private val peers = LinkedHashSet<Peer>()
     private val highestSequence = linkedMapOf(sessionId to -1L)
     private val rootClock = RootClock()
+    private val probeSchedule = ClockProbeSchedule()
     private val clockRoutes = LinkedHashMap<UUID, ClockRoute>()
     private var clockSession: UUID? = null
     private var clockParent: Peer? = null
     private var pendingClock: PendingClock? = null
-    private var nextProbeAt = 0L
-    private var clockProbes = 0
     private var sourceStartedAt: Long? = null
     private val watchdog = Executors.newSingleThreadScheduledExecutor { task ->
         Thread(task, "capture-relay-watchdog").apply { isDaemon = true }
@@ -198,8 +197,6 @@ class RelayNode(
                 } else if (clockSession == frame.sessionId && clockParent?.available() != true) {
                     clearClock()
                     clockParent = source
-                    clockProbes = 0
-                    nextProbeAt = 0
                 }
             }
             forward(frame, source)
@@ -258,11 +255,12 @@ class RelayNode(
             }
             val parent = clockParent ?: return
             val session = clockSession ?: return
-            if (!parent.available() || pendingClock != null || now < nextProbeAt) return
+            if (!parent.available()) return
+            val estimate = rootClock.estimate(now)
+            if (!probeSchedule.shouldProbe(now, estimate?.ready == true, estimate?.samples ?: 0,
+                    pendingClock != null)) return
             val request = ClockRequest(session, UUID.randomUUID(), now, 1)
             pendingClock = PendingClock(request.requestId, now, parent)
-            clockProbes++
-            nextProbeAt = now + if (clockProbes < 7) INITIAL_PROBE_INTERVAL_NANOS else PROBE_INTERVAL_NANOS
             parent to request
         }
         work.first.offerControl(work.second, localProbe = true)
@@ -321,6 +319,7 @@ class RelayNode(
 
     private fun clearClock() {
         rootClock.reset()
+        probeSchedule.reset()
         pendingClock = null
         clockParent = null
         clockRoutes.clear()
@@ -399,7 +398,7 @@ class RelayNode(
         }
 
         fun checkControlRate(now: Long) {
-            if (now < controlWindowAt || now - controlWindowAt >= PROBE_INTERVAL_NANOS) {
+            if (now < controlWindowAt || now - controlWindowAt >= CONTROL_WINDOW_NANOS) {
                 controlWindowAt = now
                 controlCount = 0
             }
@@ -527,8 +526,7 @@ class RelayNode(
         const val MAX_SESSIONS = 32
         private const val MAX_CLOCK_ROUTES = 32
         private const val PROBE_TIMEOUT_NANOS = 1_000_000_000L
-        private const val INITIAL_PROBE_INTERVAL_NANOS = 100_000_000L
-        private const val PROBE_INTERVAL_NANOS = 1_000_000_000L
+        private const val CONTROL_WINDOW_NANOS = 1_000_000_000L
         private const val MAX_TIMED_LEAD_NANOS = 3_000_000_000L
     }
 }

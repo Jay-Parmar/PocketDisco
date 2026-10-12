@@ -295,6 +295,47 @@ class RelayClockTest {
     }
 
     @Test
+    fun `an authenticated receiver maintains and refills its clock without reconnecting`() {
+        val started = 100_000_000_000L
+        val now = AtomicLong(started)
+        val receiver = node(clockNanos = now::get)
+        val source = rawPeer(receiver)
+        val session = UUID.randomUUID()
+        PcmWire.writeFrame(source.getOutputStream(), AudioFrame(session, 0, started, 1, pcm))
+
+        fun replyAt(elapsed: Long, accepted: Long) {
+            now.set(started + elapsed)
+            val request = PcmWire.readPacket(source.getInputStream()) as ClockRequest
+            assertEquals(session, request.sessionId)
+            PcmWire.writePacket(source.getOutputStream(), ClockReply(session, request.requestId,
+                request.sentNanos, request.sentNanos, request.sentNanos, 1))
+            await {
+                val state = receiver.snapshot()
+                state.clockRepliesAccepted == accepted && state.clockProbesSent == accepted
+            }
+        }
+
+        repeat(6) { index -> replyAt(index * 100_000_000L, index + 1L) }
+        replyAt(1_000_000_000, 7)
+        replyAt(1_500_000_000, 8)
+        assertEquals(8, receiver.snapshot().clockSamples)
+        assertTrue(receiver.snapshot().clockReady)
+
+        now.set(started + 5_500_000_001)
+        assertFalse(receiver.snapshot().clockReady)
+        assertEquals(2, receiver.snapshot().clockSamples)
+        replyAt(5_500_000_001, 9)
+        assertTrue(receiver.snapshot().clockReady)
+        replyAt(5_600_000_001, 10)
+        val refilled = receiver.snapshot()
+        assertEquals(4, refilled.clockSamples)
+        assertEquals(1, refilled.peers)
+        assertEquals(0L, refilled.rejectedPeers)
+        assertEquals(0L, refilled.clockRepliesRejected)
+        assertEquals(0L, refilled.clockProbeTimeouts)
+    }
+
+    @Test
     fun `a clock request does not escape its hop cap or create another source route`() {
         val relay = node()
         val source = rawPeer(relay)
