@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="source_status" type="id" />
+    <item name="source_allow" type="id" />
+    <item name="source_block" type="id" />
+    <item name="source_stop" type="id" />
+    <item name="source_file" type="id" />
+    <item name="source_refresh" type="id" />
+</resources>
