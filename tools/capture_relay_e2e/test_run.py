@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import Mock, patch
 from xml.etree.ElementTree import Element
 
-from run import Device, Forward, LAB, PORT, audio_proof, bounds
+from run import Device, Forward, LAB, PORT, audio_proof, bounds, silence_proof
 
 
 class HelpersTest(unittest.TestCase):
@@ -158,6 +158,29 @@ class ForwardTest(unittest.TestCase):
         peer.wait_report.return_value = {"receivedPcm": {"first100AudibleFramesSha256": "b"}, "output": {"playbackHeadFrames": 1}}
         with self.assertRaisesRegex(AssertionError, "hashes differ"):
             audio_proof(host, peer)
+
+
+class SilenceTest(unittest.TestCase):
+    def check_samples(self, before, after, require_zero=False):
+        phone = Mock()
+        phone.report.side_effect = [{"capture": before}, {"capture": after}]
+        with patch("run.time.sleep"):
+            return silence_proof(phone, require_zero)
+
+    def test_silence_needs_live_capture_progress(self):
+        before = {"running": True, "frames": 100, "nonSilentFrames": 20}
+        after = {**before, "frames": 300}
+        self.assertEqual(self.check_samples(before, after), after)
+        for bad in (before, {**after, "running": False}, {**after, "nonSilentFrames": 21}):
+            with self.assertRaises(AssertionError):
+                self.check_samples(before, bad)
+
+    def test_uid_isolation_requires_no_prior_signal(self):
+        before = {"running": True, "frames": 100, "nonSilentFrames": 0}
+        self.check_samples(before, {**before, "frames": 300}, require_zero=True)
+        before["nonSilentFrames"] = 1
+        with self.assertRaises(AssertionError):
+            self.check_samples(before, {**before, "frames": 300}, require_zero=True)
 
 
 if __name__ == "__main__":

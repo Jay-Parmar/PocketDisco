@@ -198,6 +198,18 @@ def audio_proof(phone, emulator):
     emulator.wait_report(lambda r: r["output"]["playbackHeadFrames"] > baseline)
 
 
+def silence_proof(phone, require_zero=False):
+    time.sleep(2)
+    before = phone.report()["capture"]
+    time.sleep(4)
+    after = phone.report()["capture"]
+    if (not before["running"] or not after["running"] or after["frames"] <= before["frames"]
+            or after["nonSilentFrames"] != before["nonSilentFrames"]
+            or (require_zero and after["nonSilentFrames"] != 0)):
+        raise AssertionError("Excluded-source capture was not silent while capture remained active")
+    return after
+
+
 def exercise(phone, emulator, passed, music_file=False):
     code = secrets.token_hex(16)
     for device in (phone, emulator):
@@ -219,8 +231,13 @@ def exercise(phone, emulator, passed, music_file=False):
     phone.wait_report(lambda r: r["capture"]["running"] and r["capture"]["frames"] > 0)
     phone.tap("Open generated source")
     phone.wait_foreground(SOURCE, {LAB})
-    phone.tap("Open generated file in music app" if music_file else "Play allowed", SOURCE)
+    phone.tap("Play allowed", SOURCE)
     if music_file:
+        phone.tap("Refresh status", SOURCE)
+        phone.find("Playing generated tone: capture allowed", SOURCE)
+        silence_proof(phone, require_zero=True)
+        passed("selected app excludes the other source UID")
+        phone.tap("Open generated file in music app", SOURCE)
         phone.wait_foreground(MUSIC, {SOURCE})
     audio_proof(phone, emulator)
     passed("generated file capture and matching audible PCM" if music_file else "allowed capture and matching audible PCM")
@@ -229,12 +246,7 @@ def exercise(phone, emulator, passed, music_file=False):
         phone.wait_foreground(SOURCE, {MUSIC})
     else:
         phone.tap("Play blocked", SOURCE)
-        time.sleep(2)
-        before = phone.report()["capture"]
-        time.sleep(4)
-        after = phone.report()["capture"]
-        if after["frames"] <= before["frames"] or after["nonSilentFrames"] != before["nonSilentFrames"]:
-            raise AssertionError("Blocked-source capture was not silent while capture remained active")
+        after = silence_proof(phone)
         passed("source capture policy respected")
         phone.tap("Play allowed", SOURCE)
         phone.wait_report(lambda r: r["capture"]["nonSilentFrames"] > after["nonSilentFrames"])
