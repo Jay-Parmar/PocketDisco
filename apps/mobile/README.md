@@ -28,8 +28,20 @@ The internal package is `com.pocketdisco.internal`. Install
 For each selected device, run `adb reverse tcp:8000 tcp:8000`. The app defaults
 to `http://127.0.0.1:8000`; no Metro server is needed for this variant.
 
-[The smoke loop](../../tools/mobile_e2e/README.md) drives one USB phone and one
-emulator. Local SQLite tests are separate from the real PostgreSQL/Redis CI job.
+For the deployed server, keep an SSH loopback tunnel running on PC port 18080
+and map device port 8000 to that port instead. Inspect existing mappings first;
+do not replace another test's mapping. The [deployment checkpoint](../../docs/11-deployment-proposal.md)
+records this private route and the separate public HTTPS gate. Disconnecting
+USB or stopping the tunnel makes this development address unreachable.
+
+The internal server selection is saved securely before guest sign-in, including
+across process restarts and expired sessions. Changing servers never carries
+the previous server's credentials to the new address. A confirmed reconnect
+clears its old connection error without hiding storage or chat failures.
+
+[The smoke loops](../../tools/mobile_e2e/README.md) cover two-device local tests
+and a three-device deployed-backend run with explicit device selection.
+Local SQLite tests are separate from the real PostgreSQL/Redis CI job.
 The app has private rooms, chat and a local generated-audio preview. Shared
 room playback is not connected yet.
 

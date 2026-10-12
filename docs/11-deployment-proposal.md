@@ -101,6 +101,13 @@ The observed outbound address is not proof that incoming router traffic reaches
 this server. Public forwarding, certificate issuance and independent-network
 phone access remain unverified.
 
+The [restricted HTTPS preparation](../infra/self-hosted/https/README.md) uses
+pinned Caddy 2.11.7, isolated service state, exact tester-IP admission and
+request-free logs. Its 18 generator tests and all four health-only/allowlisted,
+staging/production configuration variants pass local parser checks with the
+checksum-verified binary. This is preparation only: no proxy service, certificate,
+trusted-proxy override or public mobile endpoint has been installed.
+
 ## Before public access
 
 1. Confirm the public router can reach the Linux server. The development PC and
