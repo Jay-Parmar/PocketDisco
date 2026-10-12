@@ -31,7 +31,7 @@ class Device:
 
     def command(self, *args):
         try:
-            result = subprocess.run([self.adb, "-s", self.serial, *args], capture_output=True, text=True, timeout=35)
+            result = subprocess.run([self.adb, "-s", self.serial, *args], capture_output=True, text=True, encoding="utf-8", timeout=35)
         except (subprocess.TimeoutExpired, OSError):
             raise RuntimeError(f"{self.label}: ADB unavailable or timed out") from None
         if result.returncode:

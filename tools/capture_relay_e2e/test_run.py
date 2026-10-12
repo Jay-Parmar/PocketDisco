@@ -27,6 +27,13 @@ class HelpersTest(unittest.TestCase):
         with patch("run.subprocess.run", return_value=result), self.assertRaisesRegex(RuntimeError, "^phone: ADB shell failed$"):
             device.command("shell", "input", "text", "secret")
 
+    def test_adb_text_uses_utf8_on_windows(self):
+        device = Device("adb", "test", "phone")
+        result = Mock(returncode=0, stdout="PocketDisco Capture L\u2026", stderr="")
+        with patch("run.subprocess.run", return_value=result) as command:
+            self.assertEqual(device.command("shell", "example"), result.stdout)
+        self.assertEqual(command.call_args.kwargs["encoding"], "utf-8")
+
     def test_report_ignores_unknown_fields(self):
         device = Device("adb", "test", "phone")
         with patch.object(device, "command", return_value=json.dumps({"active": True, "sessionCode": "secret"})):
