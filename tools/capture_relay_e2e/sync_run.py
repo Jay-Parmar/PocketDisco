@@ -183,7 +183,7 @@ def stop_devices(devices, source, music_file, checks):
                 checks.append({"name": f"{device.label} app cleanup", "result": "failed"})
 
 
-def exercise(source, receivers, transport, peer_name, music_file, passed, samples=8, observations=None):
+def exercise(source, receivers, transport, peer_name, music_file, passed, samples=8, observations=None, baseline=None):
     code = secrets.token_hex(16)
     for device in (source, *receivers):
         device.launch()
@@ -224,7 +224,8 @@ def exercise(source, receivers, transport, peer_name, music_file, passed, sample
     for device in receivers:
         audio_proof(source, device)
     passed("matching generated audio on both receivers")
-    baseline = {source.label: deepcopy(source.report())}
+    baseline = baseline if baseline is not None else {}
+    baseline[source.label] = deepcopy(source.report())
     for device in receivers:
         baseline[device.label] = deepcopy(device.wait_report(timing_proof, timeout=5))
     previous = deepcopy(baseline)
@@ -277,6 +278,7 @@ def main():
     receivers = [Device(args.adb, serial, f"receiver{index + 1}") for index, serial in enumerate(args.receiver)]
     devices, checks, touched = [source, *receivers], [], []
     observations = []
+    baseline = {}
     started_at = utc_now()
 
     def passed(name, **evidence):
@@ -301,7 +303,7 @@ def main():
                     for package in (LAB, SOURCE):
                         device.command("shell", "am", "force-stop", package)
                 exercise(source, receivers, args.transport, args.peer_name, args.music_file, passed,
-                         samples=args.samples, observations=observations)
+                         samples=args.samples, observations=observations, baseline=baseline)
             finally:
                 read_final_reports(touched, checks)
                 stop_devices(touched, source, args.music_file, checks)
@@ -311,6 +313,7 @@ def main():
     finally:
         result = {"startedAtUtc": started_at, "finishedAtUtc": utc_now(), "transport": args.transport,
                   "audibleSyncMeasured": False, "musicLocalFile": args.music_file, "requestedSamples": args.samples,
+                  "baseline": baseline,
                   "partialSamples": observations if not any(check["name"] == "sustained scheduled output on both receivers"
                                                              for check in checks) else [],
                   "checks": checks, "latestObservations": {device.label: device.latest for device in devices}}

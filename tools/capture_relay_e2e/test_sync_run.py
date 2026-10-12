@@ -1,5 +1,6 @@
 import argparse
 import io
+import json
 import unittest
 from unittest.mock import MagicMock, Mock, call, patch
 
@@ -119,6 +120,49 @@ class CleanupTest(unittest.TestCase):
                 patch("builtins.print"):
             self.assertEqual(main(), 1)
         self.assertEqual(events, ["reports", "stop"])
+        result = json.loads((destination / "results.json").write_text.call_args.args[0])
+        self.assertEqual(result["baseline"], {})
+
+    def test_sampling_baseline_is_saved_on_success_and_failure(self):
+        for failed in (False, True):
+            with self.subTest(failed=failed):
+                destination = MagicMock()
+                destination.is_relative_to.return_value = True
+                (destination / "results.json").exists.return_value = False
+                args = parse_args(SamplesArgumentTest.args)
+                args.output = Mock()
+                args.output.resolve.return_value = destination
+                devices = [Mock(label=label, serial=serial, latest={}) for label, serial in
+                           (("source", args.source), ("receiver1", args.receiver[0]), ("receiver2", args.receiver[1]))]
+                reports = [{"reportSequence": 10, "output": {"scheduledStarts": 1},
+                            "relay": {}, "receivedPcm": {}} for _ in devices]
+                for device, report in zip(devices, reports):
+                    device.report.return_value = report
+                    device.wait_report.return_value = report
+                expected = {device.label: deepcopy(report) for device, report in zip(devices, reports)}
+                if failed:
+                    devices[1].wait_report.side_effect = [reports[1]] * 3 + [
+                        AssertionError("receiver1: output.scheduledStarts changed during sampling")]
+
+                def cleanup(*unused):
+                    for report in reports:
+                        report["output"]["scheduledStarts"] = 0
+
+                with patch("sync_run.parse_args", return_value=args), \
+                        patch("sync_run.Device", side_effect=devices), \
+                        patch("sync_run.QuietPlayback"), patch("sync_run.Forward"), patch("sync_run.Reverse"), \
+                        patch("sync_run.host_tcp"), patch("sync_run.audio_proof"), patch("sync_run.time.sleep"), \
+                        patch("sync_run.read_final_reports"), patch("sync_run.stop_devices", side_effect=cleanup), \
+                        patch("builtins.print"):
+                    self.assertEqual(main(), int(failed))
+                result = json.loads((destination / "results.json").write_text.call_args.args[0])
+                self.assertEqual(result["baseline"], expected)
+                if failed:
+                    self.assertEqual(result["checks"][-1]["error"],
+                                     "receiver1: output.scheduledStarts changed during sampling")
+                    self.assertEqual(len(result["partialSamples"]), 1)
+                else:
+                    self.assertEqual(result["checks"][-1]["baseline"], expected)
 
 
 class QuietPlaybackTest(unittest.TestCase):
