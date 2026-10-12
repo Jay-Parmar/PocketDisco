@@ -6,6 +6,10 @@ at `6019479`. [PR 9](https://github.com/Jay-Parmar/PocketDisco/pull/9) is stacke
 on PR 8. Microcommits are pushed; nothing has been merged. The earlier pause
 record is retained below.
 
+This checkpoint describes the pre-synchronization lab. The newer
+[receiver timing and internal product milestone](13-synchronized-capture.md)
+records protocol-v2 builds, two physical phones and paired-Bluetooth results.
+
 ## Scope
 
 The owner authorized a separate capture-and-relay diagnostic using the USB
