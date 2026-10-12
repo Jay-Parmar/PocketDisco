@@ -44,6 +44,16 @@ class MappingDevice:
 
 
 class MappingTest(unittest.TestCase):
+    def test_blank_padding_in_adb_output_is_ignored(self):
+        device = Mock()
+        for output, expected in (
+            ("UsbFfs tcp:8000 tcp:18080\n\n", "tcp:18080"),
+            ("\n \r\n", None),
+        ):
+            with self.subTest(output=output):
+                device.command.return_value = output
+                self.assertEqual(ApiMapping(device, 18080).current(), expected)
+
     def test_existing_matching_mapping_is_preserved(self):
         device = MappingDevice("tcp:18080")
         with ApiMapping(device, 18080):

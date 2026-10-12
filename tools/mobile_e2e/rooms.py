@@ -64,6 +64,8 @@ class ApiMapping:
         socket = r"(?:tcp:\d{1,5}|local(?:abstract|reserved|filesystem):\S+)"
         for line in self.device.command("reverse", "--list").splitlines():
             row = line.split()
+            if not row:
+                continue
             if len(row) != 3 or not all(
                 re.fullmatch(socket, value) for value in row[1:]
             ):
