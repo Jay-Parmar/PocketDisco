@@ -96,7 +96,7 @@ jobs:
         run: >-
           bash gradlew :app:testDebugUnitTest :core:testDebugUnitTest :protocol:test
           :app:lintInternal :app:lintRelease :app:assembleInternal :app:assembleRelease
-          --max-workers=2 --console=plain
+          --init-script tests/bundle-inputs.gradle --max-workers=2 --console=plain
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: pocketdisco-internal-apk
