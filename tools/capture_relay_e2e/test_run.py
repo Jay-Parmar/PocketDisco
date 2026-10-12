@@ -170,6 +170,71 @@ class HelpersTest(unittest.TestCase):
         tap.assert_not_called()
 
 
+class TapTest(unittest.TestCase):
+    def setUp(self):
+        self.device = Device("adb", "test", "phone")
+        self.visible = Element("node", package=LAB, text="Host USB/TCP test", bounds="[106,980][529,1098]")
+
+    def test_scrolls_top_clipped_control_before_tapping(self):
+        clipped = Element("node", package=LAB, text="Host USB/TCP test", bounds="[106,0][529,98]")
+        with patch.object(self.device, "find", side_effect=[clipped, self.visible]) as find, \
+                patch.object(self.device, "command", return_value="Physical size: 1080x2400"), \
+                patch.object(self.device, "check_foreground") as guard, \
+                patch.object(self.device, "scroll") as scroll, patch.object(self.device, "tap_node") as tap:
+            self.device.tap("Host USB/TCP test")
+        scroll.assert_called_once_with(down=False)
+        guard.assert_called_once_with({LAB})
+        self.assertEqual(find.call_count, 2)
+        tap.assert_called_once_with(self.visible)
+
+    def test_scrolls_bottom_clipped_control_before_tapping(self):
+        clipped = Element("node", package=LAB, text="Host USB/TCP test", bounds="[106,2302][529,2400]")
+        with patch.object(self.device, "find", side_effect=[clipped, self.visible]), \
+                patch.object(self.device, "command", return_value="Physical size: 1080x2400"), \
+                patch.object(self.device, "check_foreground"), \
+                patch.object(self.device, "scroll") as scroll, patch.object(self.device, "tap_node") as tap:
+            self.device.tap("Host USB/TCP test")
+        scroll.assert_called_once_with(down=True)
+        tap.assert_called_once_with(self.visible)
+
+    def test_visible_control_uses_current_bounds_without_scrolling(self):
+        with patch.object(self.device, "find", return_value=self.visible), \
+                patch.object(self.device, "command", return_value="Physical size: 1080x2400") as command, \
+                patch.object(self.device, "check_foreground") as guard, \
+                patch.object(self.device, "scroll") as scroll:
+            self.device.tap("Host USB/TCP test")
+        scroll.assert_not_called()
+        guard.assert_called_once_with({LAB})
+        command.assert_any_call("shell", "wm", "size")
+        command.assert_called_with("shell", "input", "tap", "317", "1039")
+
+    def test_clipped_control_has_bounded_scroll_attempts(self):
+        clipped = Element("node", package=LAB, text="Host USB/TCP test", bounds="[106,0][529,98]")
+        with patch.object(self.device, "find", return_value=clipped) as find, \
+                patch.object(self.device, "command", return_value="Physical size: 1080x2400"), \
+                patch.object(self.device, "check_foreground") as guard, \
+                patch.object(self.device, "scroll") as scroll, patch.object(self.device, "tap_node") as tap:
+            with self.assertRaisesRegex(AssertionError, "control stayed near the screen edge"):
+                self.device.tap("Host USB/TCP test")
+        self.assertEqual(find.call_count, 8)
+        self.assertEqual(scroll.call_count, 7)
+        self.assertEqual(guard.call_count, 7)
+        tap.assert_not_called()
+
+    def test_foreground_change_blocks_corrective_scroll(self):
+        clipped = Element("node", package=SOURCE, text="Play allowed", bounds="[106,0][529,98]")
+        with patch.object(self.device, "find", return_value=clipped) as find, \
+                patch.object(self.device, "command", return_value="Physical size: 1080x2400"), \
+                patch.object(self.device, "check_foreground", side_effect=AssertionError("unrelated app")) as guard, \
+                patch.object(self.device, "scroll") as scroll, patch.object(self.device, "tap_node") as tap:
+            with self.assertRaisesRegex(AssertionError, "unrelated app"):
+                self.device.tap("Play allowed", SOURCE)
+        find.assert_called_once_with("Play allowed", SOURCE)
+        guard.assert_called_once_with({SOURCE})
+        scroll.assert_not_called()
+        tap.assert_not_called()
+
+
 class EvidenceTest(unittest.TestCase):
     def test_passed_check_preserves_observations_after_reconnect(self):
         phone, emulator = Device("adb", "host", "phone"), Device("adb", "peer", "emulator")

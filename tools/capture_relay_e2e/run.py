@@ -129,7 +129,17 @@ class Device:
         raise AssertionError(f"{self.label}: expected test control missing: {text}")
 
     def tap(self, text, package=LAB):
-        self.tap_node(self.find(text, package))
+        _, height = map(int, re.findall(r"(\d+)x(\d+)", self.command("shell", "wm", "size"))[-1])
+        for attempt in range(8):
+            node = self.find(text, package)
+            _, top, _, bottom = bounds(node)
+            if height * .15 <= top < bottom <= height * .85:
+                self.tap_node(node)
+                return
+            if attempt < 7:
+                self.check_foreground({package})
+                self.scroll(down=top >= height * .15)
+        raise AssertionError(f"{self.label}: control stayed near the screen edge: {text}")
 
     def fill_code(self, code):
         if not re.fullmatch(r"[0-9a-fA-F]{32}", code):
