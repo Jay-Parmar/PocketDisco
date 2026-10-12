@@ -31,16 +31,6 @@ class SourceActivity : Activity() {
         }
         val padding = dp(20)
         layout.setPadding(padding, padding, padding, padding)
-        layout.setOnApplyWindowInsetsListener { view, insets ->
-            if (Build.VERSION.SDK_INT >= 30) {
-                val bars = insets.getInsets(WindowInsets.Type.systemBars())
-                view.setPadding(padding + bars.left, padding + bars.top, padding + bars.right, padding + bars.bottom)
-            } else {
-                @Suppress("DEPRECATION")
-                view.setPadding(padding, padding + insets.systemWindowInsetTop, padding, padding + insets.systemWindowInsetBottom)
-            }
-            insets
-        }
         label(layout, "POCKETDISCO / TEST SOURCE", 12f, LIME, true)
         label(layout, "Sound check.", 34f, INK, true)
         label(layout, "A quiet signal. A clear answer.", 17f)
@@ -89,7 +79,19 @@ class SourceActivity : Activity() {
         setContentView(ScrollView(this).apply {
             setBackgroundColor(NIGHT)
             isFillViewport = true
+            fitsSystemWindows = true
+            clipToPadding = true
             addView(layout)
+            setOnApplyWindowInsetsListener { view, insets ->
+                if (Build.VERSION.SDK_INT >= 30) {
+                    val bars = insets.getInsets(WindowInsets.Type.systemBars())
+                    view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+                } else {
+                    @Suppress("DEPRECATION")
+                    view.setPadding(0, insets.systemWindowInsetTop, 0, insets.systemWindowInsetBottom)
+                }
+                insets
+            }
         })
         refresh()
     }
