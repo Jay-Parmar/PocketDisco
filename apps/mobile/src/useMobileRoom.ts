@@ -73,7 +73,10 @@ export function useMobileRoom() {
     hadSnapshot.current = false;
   }
 
-  function persist(next: ClientState): Promise<void> {
+  function persist(
+    next: ClientState,
+    url = currentUrl.current,
+  ): Promise<void> {
     if (hydrating.current) return Promise.resolve();
     if (next.session === null || roomUnavailable(next.error)) {
       clearSavedRoom();
@@ -84,21 +87,17 @@ export function useMobileRoom() {
     } else if (hadSnapshot.current) {
       clearSavedRoom();
     }
-    const record = next.session
-      ? JSON.stringify({
-          baseUrl: currentUrl.current,
-          session: next.session,
-          roomId: savedRoomId.current,
-          inviteCode: savedInvite.current,
-        })
-      : null;
+    const record = JSON.stringify({
+      baseUrl: url,
+      session: next.session,
+      roomId: savedRoomId.current,
+      inviteCode: savedInvite.current,
+    });
     if (record === lastQueued.current) return writes.current;
     lastQueued.current = record;
     const operation = writes.current
       .catch(() => {})
-      .then(() =>
-        record === null ? DeviceSession.clear() : DeviceSession.save(record),
-      );
+      .then(() => DeviceSession.save(record));
     writes.current = operation;
     operation.catch(() => {
       if (lastQueued.current === record) lastQueued.current = undefined;
@@ -200,7 +199,7 @@ export function useMobileRoom() {
           savedInvite.current = restored.inviteCode;
           hadSnapshot.current = false;
           attach(client, restored.baseUrl);
-          client.restoreSession(restored.session);
+          if (restored.session) client.restoreSession(restored.session);
         }
         hydrating.current = false;
         await persist(clientRef.current!.getState());
@@ -319,10 +318,19 @@ export function useMobileRoom() {
         if (url === currentUrl.current) return true;
         if (!settings.allowLocalServer) return false;
         const nextClient = createClient(url);
-        clientRef.current!.signOut();
+        const previousClient = clientRef.current!;
+        const previousUrl = currentUrl.current;
+        unsubscribe.current();
+        previousClient.signOut();
         clearSavedRoom();
-        await persist(clientRef.current!.getState());
-        attach(nextClient, url);
+        setState(previousClient.getState());
+        try {
+          await persist(nextClient.getState(), url);
+          attach(nextClient, url);
+        } catch (failure) {
+          attach(previousClient, previousUrl);
+          throw failure;
+        }
         return true;
       })) === true,
   };

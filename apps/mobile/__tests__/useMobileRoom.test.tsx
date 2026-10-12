@@ -176,7 +176,7 @@ function lastRecord(fallback = saved()) {
   const calls = native.save.mock.calls;
   return JSON.parse(calls[calls.length - 1]?.[0] ?? fallback) as {
     baseUrl: string;
-    session: Session;
+    session: Session | null;
     roomId: string | null;
     inviteCode: string | null;
   };
@@ -273,7 +273,7 @@ test('persists rotated tokens before a room resume finishes', async () => {
   await act(async () => screen!.unmount());
   screen = undefined;
   await act(async () => resume.resolve(snapshot));
-  expect(lastRecord().session.refresh_token).toBe('rotated-refresh');
+  expect(lastRecord().session?.refresh_token).toBe('rotated-refresh');
 });
 
 test('retains room and invite after a failed resume and can retry', async () => {
@@ -370,23 +370,81 @@ test('clears credentials and room references on authentication expiry', async ()
       error: new ClientError('session_expired', 'Choose a name again.'),
     }),
   );
-  expect(native.clear).toHaveBeenCalledTimes(1);
+  expect(lastRecord()).toEqual({
+    baseUrl,
+    session: null,
+    roomId: null,
+    inviteCode: null,
+  });
   expect(room.canResume).toBe(false);
 });
 
-test('clears malformed saved data instead of failing every launch', async () => {
+test('replaces malformed saved data instead of failing every launch', async () => {
   native.load.mockResolvedValue('{not-json');
   await render();
-  expect(native.clear).toHaveBeenCalledTimes(1);
+  expect(lastRecord()).toEqual({
+    baseUrl,
+    session: null,
+    roomId: null,
+    inviteCode: null,
+  });
   expect(room.booting).toBe(false);
   expect(room.state.session).toBeNull();
 });
 
-test('does not attach a new server until old credentials are cleared', async () => {
+test('saves a selected server before sign-in and restores it after restart', async () => {
+  native.load.mockResolvedValue(null);
+  await render();
+  const selectedUrl = 'https://rooms.example.com';
+  await act(async () => {
+    expect(await room.saveServer(selectedUrl)).toBe(true);
+  });
+  const record = lastRecord();
+  expect(record).toEqual({
+    baseUrl: selectedUrl,
+    session: null,
+    roomId: null,
+    inviteCode: null,
+  });
+  await act(async () => screen!.unmount());
+  screen = undefined;
+  native.load.mockResolvedValue(JSON.stringify(record));
+  await render();
+  expect(room.baseUrl).toBe(selectedUrl);
+  expect(room.state.session).toBeNull();
+  expect(room.canResume).toBe(false);
+  expect(currentClient().restoreSession).not.toHaveBeenCalled();
+  expect(mockResume).not.toHaveBeenCalled();
+});
+
+test('keeps a selected origin when authentication expires', async () => {
+  const selectedUrl = 'https://rooms.example.com';
+  native.load.mockResolvedValue(
+    JSON.stringify({ ...JSON.parse(saved()), baseUrl: selectedUrl }),
+  );
+  await render();
+  await act(async () =>
+    currentClient().emit({
+      session: null,
+      snapshot: null,
+      inviteCode: null,
+      error: new ClientError('session_expired', 'Choose a name again.'),
+    }),
+  );
+  expect(lastRecord()).toEqual({
+    baseUrl: selectedUrl,
+    session: null,
+    roomId: null,
+    inviteCode: null,
+  });
+  expect(native.clear).not.toHaveBeenCalled();
+});
+
+test('does not attach a new server until its credential-free record is saved', async () => {
   native.load.mockResolvedValue(saved(null));
   await render();
-  const clear = deferred<void>();
-  native.clear.mockReturnValueOnce(clear.promise);
+  const write = deferred<void>();
+  native.save.mockReturnValueOnce(write.promise);
   let switching!: Promise<boolean>;
   await act(async () => {
     switching = room.saveServer('http://192.0.2.10:8000');
@@ -395,7 +453,7 @@ test('does not attach a new server until old credentials are cleared', async () 
   expect(room.state.session).toBeNull();
   expect(currentClient().restoreSession).not.toHaveBeenCalled();
   await act(async () => {
-    clear.resolve(undefined);
+    write.resolve(undefined);
     await switching;
   });
   expect(room.baseUrl).toBe('http://192.0.2.10:8000');
@@ -403,10 +461,10 @@ test('does not attach a new server until old credentials are cleared', async () 
   expect(currentClient().restoreSession).not.toHaveBeenCalled();
 });
 
-test('keeps the old origin on a failed credential clear and supports retry', async () => {
+test('keeps the old origin on a failed secure save and supports retry', async () => {
   native.load.mockResolvedValue(saved(null));
   await render();
-  native.clear.mockRejectedValueOnce(new Error('Storage unavailable'));
+  native.save.mockRejectedValueOnce(new Error('Storage unavailable'));
   await act(async () => {
     expect(await room.saveServer('http://192.0.2.10:8000')).toBe(false);
   });
@@ -415,8 +473,33 @@ test('keeps the old origin on a failed credential clear and supports retry', asy
   await act(async () => {
     expect(await room.saveServer('http://192.0.2.10:8000')).toBe(true);
   });
-  expect(native.clear).toHaveBeenCalledTimes(2);
+  expect(native.save).toHaveBeenCalledTimes(2);
   expect(room.baseUrl).toBe('http://192.0.2.10:8000');
+});
+
+test('ignores old client updates while saving a new origin', async () => {
+  native.load.mockResolvedValue(saved(null));
+  await render();
+  const oldClient = currentClient();
+  const write = deferred<void>();
+  native.save.mockReturnValueOnce(write.promise);
+  let switching!: Promise<boolean>;
+  await act(async () => {
+    switching = room.saveServer('https://rooms.example.com');
+  });
+  await act(async () => oldClient.emit({ session }));
+  await act(async () => {
+    write.resolve(undefined);
+    await switching;
+  });
+  expect(lastRecord()).toEqual({
+    baseUrl: 'https://rooms.example.com',
+    session: null,
+    roomId: null,
+    inviteCode: null,
+  });
+  expect(room.state.session).toBeNull();
+  expect(currentClient().restoreSession).not.toHaveBeenCalled();
 });
 
 test('does not restore another production origin', async () => {
@@ -426,7 +509,12 @@ test('does not restore another production origin', async () => {
   });
   await render();
   expect(mockResume).not.toHaveBeenCalled();
-  expect(native.clear).toHaveBeenCalledTimes(1);
+  expect(lastRecord()).toEqual({
+    baseUrl: 'https://rooms.example.com',
+    session: null,
+    roomId: null,
+    inviteCode: null,
+  });
   expect(room.state.session).toBeNull();
 });
 
