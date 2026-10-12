@@ -57,6 +57,16 @@ class Device:
         activity = "SourceActivity" if package == SOURCE else "MainActivity"
         self.command("shell", "am", "start", "-W", "-n", f"{package}/.{activity}")
 
+    def wait_foreground(self, package, transitioning=()):
+        for attempt in range(25):
+            focused = self.foreground()
+            if focused == package:
+                return
+            if focused and focused not in transitioning:
+                raise AssertionError(f"{self.label}: unrelated app interrupted the test")
+            time.sleep(.1)
+        raise AssertionError(f"{self.label}: expected app did not finish opening")
+
     def nodes(self, allowed=None):
         allowed = set(allowed or {LAB})
         self.check_foreground(allowed)
@@ -120,6 +130,7 @@ class Device:
                     if not names_lab([n for n in nodes if n.get("package") == "com.android.systemui"]):
                         raise AssertionError("Projection prompt does not identify the lab")
                     self.tap_node(node)
+                    self.wait_foreground(LAB, SYSTEM)
                     return
             if node is not None:
                 self.tap_node(node)
@@ -202,16 +213,17 @@ def exercise(phone, emulator, passed, music_file=False):
     passed("projection cancellation captures no audio")
     phone.tap("Start capture")
     phone.consent(True)
-    phone.wait_report(lambda r: r["capture"]["running"])
+    phone.wait_report(lambda r: r["capture"]["running"] and r["capture"]["frames"] > 0)
     phone.tap("Open generated source")
+    phone.wait_foreground(SOURCE, {LAB})
     phone.tap("Open generated file in music app" if music_file else "Play allowed", SOURCE)
     if music_file:
-        phone.check_foreground({MUSIC})
+        phone.wait_foreground(MUSIC, {SOURCE})
     audio_proof(phone, emulator)
     passed("generated file capture and matching audible PCM" if music_file else "allowed capture and matching audible PCM")
     if music_file:
         phone.command("shell", "input", "keyevent", "4")
-        phone.check_foreground({SOURCE})
+        phone.wait_foreground(SOURCE, {MUSIC})
     else:
         phone.tap("Play blocked", SOURCE)
         time.sleep(2)

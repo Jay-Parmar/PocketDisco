@@ -65,6 +65,13 @@ class HelpersTest(unittest.TestCase):
                 device.check_foreground({LAB})
         self.assertEqual(foreground.call_count, 10)
 
+    def test_waits_for_only_the_expected_activity_transition(self):
+        device = Device("adb", "test", "phone")
+        with patch.object(device, "foreground", side_effect=["com.android.systemui", "", LAB]), patch("run.time.sleep"):
+            device.wait_foreground(LAB, {"com.android.systemui"})
+        with patch.object(device, "foreground", return_value="other.app"), self.assertRaisesRegex(AssertionError, "unrelated"):
+            device.wait_foreground(LAB, {"com.android.systemui"})
+
     def test_cancel_projection_after_lab_permissions(self):
         device = Device("adb", "test", "phone")
         permission = "com.android.permissioncontroller"
@@ -72,9 +79,10 @@ class HelpersTest(unittest.TestCase):
         allow = Element("node", package=permission, **{"resource-id": permission + ":id/permission_allow_foreground_only_button"})
         cancel = Element("node", package="com.android.systemui", text="Cancel", enabled="true")
         title = Element("node", package="com.android.systemui", text="Share your screen with PocketDisco Capture L\u2026?")
-        with patch.object(device, "nodes", side_effect=[dialog + [allow], [title, cancel]]), patch.object(device, "tap_node") as tap, patch("run.time.sleep"):
+        with patch.object(device, "nodes", side_effect=[dialog + [allow], [title, cancel]]), patch.object(device, "tap_node") as tap, patch.object(device, "wait_foreground") as wait, patch("run.time.sleep"):
             device.consent(False)
         self.assertEqual(tap.call_args_list, [unittest.mock.call(allow), unittest.mock.call(cancel)])
+        self.assertEqual(wait.call_args.args[0], LAB)
 
     def test_other_permission_prompt_is_not_accepted(self):
         device = Device("adb", "test", "phone")
