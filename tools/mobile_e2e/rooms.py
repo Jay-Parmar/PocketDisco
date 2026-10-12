@@ -308,7 +308,12 @@ class RoomDevice(ProductDevice):
         ):
             raise RoomFailure("leave_confirmation_not_visible")
         self.tap_node(button)
-        self.find_id("welcome-screen")
+
+        def clean_welcome(nodes):
+            identities = {node.get("resource-id") for node in nodes}
+            return "welcome-screen" in identities and "error-banner" not in identities
+
+        self.wait_ui(clean_welcome)
 
 
 def exercise(devices, mappings, passed):

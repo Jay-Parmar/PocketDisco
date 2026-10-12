@@ -386,11 +386,19 @@ class DeviceSafetyTest(unittest.TestCase):
         ]
         with (
             patch.object(self.device, "tap_id") as tap,
-            patch.object(self.device, "nodes", return_value=nodes),
-            patch.object(self.device, "find_id") as find,
+            patch.object(
+                self.device,
+                "nodes",
+                side_effect=[
+                    nodes,
+                    [Element("node", **{"resource-id": "room-screen"})],
+                    [Element("node", **{"resource-id": "welcome-screen"})],
+                ],
+            ) as snapshots,
             patch.object(self.device, "check_foreground") as guard,
             patch.object(self.device, "command") as command,
             patch("rooms.system_bar_viewport", return_value=(0, 96, 1080, 2298)),
+            patch("rooms.time.sleep"),
         ):
             self.device.leave()
         tap.assert_called_once_with("leave-room-button")
@@ -401,7 +409,79 @@ class DeviceSafetyTest(unittest.TestCase):
                 call("shell", "input", "tap", "700", "1300"),
             ]
         )
-        find.assert_called_once_with("welcome-screen")
+        self.assertEqual(snapshots.call_args_list, [call({PRODUCT})] * 3)
+
+    def test_leave_rejects_welcome_with_an_error_banner(self):
+        button = Element(
+            "node",
+            **{
+                "package": PRODUCT,
+                "resource-id": "android:id/button1",
+                "text": "LEAVE ROOM",
+                "enabled": "true",
+                "bounds": "[500,1200][900,1400]",
+            },
+        )
+        dialog = [
+            Element("node", text="Leave this room?"),
+            Element("node", text="You can return with the room code."),
+            button,
+        ]
+        welcome = [
+            Element("node", **{"resource-id": "welcome-screen"}),
+            Element("node", **{"resource-id": "error-banner"}),
+        ]
+        snapshots = iter([dialog])
+        with (
+            patch.object(self.device, "tap_id"),
+            patch.object(
+                self.device,
+                "nodes",
+                side_effect=lambda unused: next(snapshots, welcome),
+            ) as reads,
+            patch.object(self.device, "check_foreground"),
+            patch.object(self.device, "command"),
+            patch("rooms.system_bar_viewport", return_value=(0, 96, 1080, 2298)),
+            patch("rooms.time.sleep") as sleep,
+            self.assertRaisesRegex(RoomFailure, "^expected_ui_state_missing$"),
+        ):
+            self.device.leave()
+        self.assertEqual(reads.call_count, 13)
+        self.assertEqual(sleep.call_args_list, [call(0.25)] * 12)
+
+    def test_leave_waits_through_transient_error_until_clean_welcome(self):
+        button = Element(
+            "node",
+            **{
+                "package": PRODUCT,
+                "resource-id": "android:id/button1",
+                "text": "LEAVE ROOM",
+                "enabled": "true",
+                "bounds": "[500,1200][900,1400]",
+            },
+        )
+        dialog = [
+            Element("node", text="Leave this room?"),
+            Element("node", text="You can return with the room code."),
+            button,
+        ]
+        welcome = Element("node", **{"resource-id": "welcome-screen"})
+        error = Element("node", **{"resource-id": "error-banner"})
+        with (
+            patch.object(self.device, "tap_id"),
+            patch.object(
+                self.device,
+                "nodes",
+                side_effect=[dialog, [welcome, error], [welcome]],
+            ) as snapshots,
+            patch.object(self.device, "check_foreground"),
+            patch.object(self.device, "command"),
+            patch("rooms.system_bar_viewport", return_value=(0, 96, 1080, 2298)),
+            patch("rooms.time.sleep") as sleep,
+        ):
+            self.device.leave()
+        self.assertEqual(snapshots.call_args_list, [call({PRODUCT})] * 3)
+        sleep.assert_called_once_with(0.25)
 
     def test_leave_does_not_confirm_an_unrecognized_dialog(self):
         button = Element(
