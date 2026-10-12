@@ -33,6 +33,23 @@ emulator. Local SQLite tests are separate from the real PostgreSQL/Redis CI job.
 The app has private rooms, chat and a local generated-audio preview. Shared
 room playback is not connected yet.
 
+## Nearby audio test
+
+Debug and internal builds show a `Nearby audio (test)` card inside a connected
+room on Android 10 or newer. It opens the [shared capture lab engine](../../experiments/android-capture-relay/core/README.md),
+not a second relay implementation. Android 7 through 9 keep the room app and
+local preview, but cannot open this test.
+
+This is a separate nearby session with its own 128-bit code and paired Bluetooth
+devices. Internet room membership does not grant or restrict nearby admission.
+Share only authorized audio; Android consent and source capture policies still
+apply. The room connection pauses during the native handoff and reconnects on
+return. Back, returning to the room and leaving the room stop nearby audio.
+
+Release builds use a disabled bridge and do not depend on the nearby library.
+They contain no capture Activity, capture service or experiment permissions.
+The generated-audio preview below remains separate and unchanged.
+
 ## Local audio preview
 
 The room's audio card plays the bundled 24-second `generated-pulse` test clip
