@@ -9,9 +9,8 @@ class ApiReverseTest(unittest.TestCase):
     def test_does_not_replace_a_different_host_port(self):
         device = Mock()
         device.command.return_value = "UsbFfs tcp:8000 tcp:18080\n"
-        with self.assertRaises(RuntimeError):
-            with ApiReverse(device):
-                pass
+        with self.assertRaises(RuntimeError), ApiReverse(device):
+            pass
         device.command.assert_called_once_with("reverse", "--list")
 
     def test_preserves_an_existing_compatible_mapping(self):
@@ -26,7 +25,9 @@ class ApiReverseTest(unittest.TestCase):
         device.command.side_effect = ["", "", "UsbFfs tcp:8000 tcp:8000\n", ""]
         with ApiReverse(device):
             pass
-        self.assertEqual(device.command.call_args, call("reverse", "--remove", "tcp:8000"))
+        self.assertEqual(
+            device.command.call_args, call("reverse", "--remove", "tcp:8000")
+        )
 
     def test_leaves_changed_mapping_alone(self):
         device = Mock()
@@ -38,15 +39,29 @@ class ApiReverseTest(unittest.TestCase):
 
 class PromptTest(unittest.TestCase):
     def test_prompt_must_name_the_product(self):
-        self.assertTrue(product_prompt([Element("node", text="Allow PocketDisco to record audio?")]))
-        self.assertFalse(product_prompt([Element("node", text="Allow another app to record audio?")]))
+        self.assertTrue(
+            product_prompt([Element("node", text="Allow PocketDisco to record audio?")])
+        )
+        self.assertFalse(
+            product_prompt([Element("node", text="Allow another app to record audio?")])
+        )
         self.assertFalse(product_prompt([Element("node", text="NotPocketDisco")]))
-        self.assertFalse(product_prompt([Element("node", text="Allow PocketDisco Capture Lab to record audio?")]))
+        self.assertFalse(
+            product_prompt(
+                [Element("node", text="Allow PocketDisco Capture Lab to record audio?")]
+            )
+        )
 
     def test_server_must_use_the_loopback_reverse(self):
-        self.assertTrue(local_api_address(Element("node", text="http://127.0.0.1:8000/")))
-        self.assertFalse(local_api_address(Element("node", text="https://api.example.test")))
-        self.assertFalse(local_api_address(Element("node", text="http://127.0.0.1:8001")))
+        self.assertTrue(
+            local_api_address(Element("node", text="http://127.0.0.1:8000/"))
+        )
+        self.assertFalse(
+            local_api_address(Element("node", text="https://api.example.test"))
+        )
+        self.assertFalse(
+            local_api_address(Element("node", text="http://127.0.0.1:8001"))
+        )
 
 
 class FormTest(unittest.TestCase):
