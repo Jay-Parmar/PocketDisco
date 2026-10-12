@@ -8,8 +8,9 @@ phones and the emulator were available for the checks below.
 
 Current handoff: the fixed build passed sustained USB playback on both phones.
 The reverse Bluetooth run exposed clock-readiness loss and receiver recovery.
-The private-room handoff passes again. PR 10 stays draft while Bluetooth
-stability is investigated with the new clock diagnostics.
+The private-room handoff passes again. Clock diagnostics identified rejected
+replies and a low sample reserve. Two clock fixes now pass regression tests;
+their device retest is in progress. PR 10 stays draft.
 
 ## Scope
 
@@ -66,7 +67,7 @@ sound. AudioTrack timestamps are software evidence, not acoustic measurements.
 
 ## Verified results
 
-- 100 capture JVM tests pass: 66 protocol, 29 shared-core and 5 source tests.
+- 111 capture JVM tests pass: 77 protocol, 29 shared-core and 5 source tests.
   A CI failure exposed an observation race in the stale-clock test. A
   controlled callback barrier now reproduces that ordering; ten complete
   protocol reruns passed without relaxing assertions or changing production
@@ -258,6 +259,41 @@ recovery. The exact unready instant was between reports; sample expiry after
 rejected replies is the supported diagnosis, not an observed disconnect or
 output-calibration failure. The failed run and partial samples are retained.
 
+### Clock maintenance fixes
+
+Commit `e0d05a2` fixes the missing age contribution to uncertainty. A line-leading
+plus was parsed separately from the Kotlin initializer. Two new tests failed
+before the fix, then all 68 protocol tests passed. They check the intended
+200 ppm age allowance and loss of readiness above the unchanged 100 ms limit.
+
+Commit `89be729` replaces permanent one-second probing with 500 ms maintenance.
+Startup or a drop below six usable samples allows up to seven probes at 100 ms
+spacing, then maintenance resumes. Restoring the reserve ends the rapid cadence
+immediately. One pending request and the existing one-second timeout prevent
+retry buildup. Cadence uses probe-admission time, not socket-write completion;
+delayed watchdog ticks do not send catch-up bursts. Parent replacement resets
+the schedule. The separate control-rate limit remains 128 packets per second.
+Sample age, RTT, uncertainty, hop, authentication and queue limits are unchanged.
+
+Six of eight schedule tests failed against the old cadence, including the
+four-slow-reply regression. The final schedule and authenticated-link refill
+test passed in three complete runs of all 77 protocol tests. The test evidence
+is in `.local-tools/capture-relay-lab/clock-age-red/` and `clock-probe-red/`.
+One cold-cache mobile UI test hit its five-second timeout. A complete rerun
+passed all 135 tests in 1.5 seconds; TypeScript and ESLint also passed. No test
+timeout or assertion was relaxed.
+
+The candidate is preserved in `.local-tools/capture-relay-lab/artifacts/89be729/`.
+Android tests, lint, builds and APK signatures pass. Capture Lab is installed
+on all three devices, with the internal product updated on Samsung. Sustained
+Bluetooth retesting is in progress.
+
+| APK | SHA256 |
+|---|---|
+| `PocketDisco-internal.apk` | `01c6f865bd7cb0b590f1aa621388f887bf344e6497f02d8997bade221a934322` |
+| `PocketDisco-Capture-Lab-debug.apk` | `235752ff102083331670a9b9bc1ed234da9df8f32093fc13d9d8bb0313ee20df` |
+| `PocketDisco-Test-Source-debug.apk` | `c4ad5215880889f54734d633099aba7a4d7f9a9c610babbef2efc565c83cc906` |
+
 Capture Lab is updated on all three devices. The product is updated on Samsung.
 Android rejected product updates on Nothing and the emulator because their
 older internal packages have a different signing key. Those apps and their
@@ -277,8 +313,8 @@ only and is not the third-phone test artifact.
 
 ## Remaining work
 
-1. Use the new clock diagnostics in continuous Bluetooth playback and repeat
-   the reverse local-file and product-entry checks on the diagnostic build. The
+1. Retest continuous Bluetooth playback and repeat the USB, local-file and
+   product-entry checks on the clock-maintenance build. The
    tracked runner requires fresh non-silent audio and unchanged peer/recovery
    counters for every sample. Failed runs retain their baseline, partial
    samples and final reports. Do not relax timing limits to pass the tests.

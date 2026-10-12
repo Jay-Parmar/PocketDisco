@@ -129,6 +129,11 @@ old audio is never drained as a delayed backlog. The bounded queue holds at
 most 100 frames. AudioTrack timestamps calibrate output lead and report error
 against the scheduled timeline. Startup calibration may discard frames.
 
+Maintenance probes run every 500 ms. Startup or a low reserve of fresh samples
+allows at most seven probes at 100 ms spacing, with one request pending at a
+time. Refilled clocks return to maintenance cadence. This does not relax the
+three-sample readiness rule, five-second expiry or 100 ms uncertainty limit.
+
 All receivers use the same future source deadline; each hop does not add a new
 1.5-second delay. The sender's original app is outside this timeline. A ready
 clock or a small software output error is not a microphone measurement. Long
