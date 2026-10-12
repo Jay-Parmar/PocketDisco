@@ -46,13 +46,26 @@ class HelpersTest(unittest.TestCase):
             self.assertEqual(device.foreground(), LAB)
         command.assert_called_once_with("shell", "dumpsys", "window")
 
+    def test_empty_focus_gets_a_bounded_transition_retry(self):
+        device = Device("adb", "test", "phone")
+        with patch.object(device, "foreground", side_effect=["", "", LAB]), patch("run.time.sleep"):
+            device.check_foreground({LAB})
+
+    def test_persistent_empty_focus_stops_the_test(self):
+        device = Device("adb", "test", "phone")
+        with patch.object(device, "foreground", return_value="") as foreground, patch("run.time.sleep"):
+            with self.assertRaises(AssertionError):
+                device.check_foreground({LAB})
+        self.assertEqual(foreground.call_count, 10)
+
     def test_cancel_projection_after_lab_permissions(self):
         device = Device("adb", "test", "phone")
         permission = "com.android.permissioncontroller"
         dialog = [Element("node", package=permission, text="Allow PocketDisco Capture Lab to record audio?")]
         allow = Element("node", package=permission, **{"resource-id": permission + ":id/permission_allow_foreground_only_button"})
         cancel = Element("node", package="com.android.systemui", text="Cancel", enabled="true")
-        with patch.object(device, "nodes", side_effect=[dialog + [allow], [cancel]]), patch.object(device, "tap_node") as tap, patch("run.time.sleep"):
+        title = Element("node", package="com.android.systemui", text="Share your screen with PocketDisco Capture L\u2026?")
+        with patch.object(device, "nodes", side_effect=[dialog + [allow], [title, cancel]]), patch.object(device, "tap_node") as tap, patch("run.time.sleep"):
             device.consent(False)
         self.assertEqual(tap.call_args_list, [unittest.mock.call(allow), unittest.mock.call(cancel)])
 
@@ -63,6 +76,30 @@ class HelpersTest(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 device.consent()
             tap.assert_not_called()
+
+    def test_other_projection_prompt_is_not_accepted(self):
+        device = Device("adb", "test", "phone")
+        title = Element("node", package="com.android.systemui", text="Share your screen with another app?")
+        share = Element("node", package="com.android.systemui", text="Share screen", enabled="true")
+        with patch.object(device, "nodes", return_value=[title, share]), patch.object(device, "tap_node") as tap:
+            with self.assertRaisesRegex(AssertionError, "does not identify"):
+                device.consent()
+        tap.assert_not_called()
+
+    def test_cleanup_dismisses_only_the_lab_projection(self):
+        device = Device("adb", "test", "phone")
+        title = Element("node", package="com.android.systemui", text="Share your screen with PocketDisco Capture Lab?")
+        cancel = Element("node", package="com.android.systemui", text="Cancel", enabled="true")
+        with patch.object(device, "foreground", return_value="com.android.systemui"), patch.object(device, "nodes", return_value=[title, cancel]), patch.object(device, "tap_node") as tap:
+            device.dismiss_projection()
+        tap.assert_called_once_with(cancel)
+
+    def test_cleanup_leaves_another_system_dialog_untouched(self):
+        device = Device("adb", "test", "phone")
+        cancel = Element("node", package="com.android.systemui", text="Cancel", enabled="true")
+        with patch.object(device, "foreground", return_value="com.android.systemui"), patch.object(device, "nodes", return_value=[cancel]), patch.object(device, "tap_node") as tap:
+            device.dismiss_projection()
+        tap.assert_not_called()
 
 
 class ForwardTest(unittest.TestCase):

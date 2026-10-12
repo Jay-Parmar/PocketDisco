@@ -12,7 +12,11 @@ SOURCE = LAB + ".source"
 MUSIC = "app.revanced.android.apps.youtube.music"
 PORT = "tcp:18990"
 SYSTEM = {"com.android.systemui", "com.android.permissioncontroller", "com.google.android.permissioncontroller"}
-HOME = {"com.android.launcher3", "com.google.android.apps.nexuslauncher", "com.nothing.launcher"}
+LAUNCHERS = {"com.android.launcher3", "com.google.android.apps.nexuslauncher", "com.nothing.launcher"}
+
+
+def names_lab(nodes):
+    return any(re.search(r"\bPocketDisco Capture L(?:ab\b|\u2026|\.\.\.)", node.get("text", "")) for node in nodes)
 
 
 def bounds(node):
@@ -40,8 +44,14 @@ class Device:
         return match.group(1) if match else ""
 
     def check_foreground(self, allowed):
-        if self.foreground() not in allowed:
-            raise AssertionError(f"{self.label}: unexpected foreground or locked screen; no interaction attempted")
+        for attempt in range(10):
+            focused = self.foreground()
+            if focused in allowed:
+                return
+            if focused or attempt == 9:
+                break
+            time.sleep(.1)
+        raise AssertionError(f"{self.label}: unexpected foreground or locked screen; no interaction attempted")
 
     def launch(self, package=LAB):
         activity = "SourceActivity" if package == SOURCE else "MainActivity"
@@ -59,6 +69,8 @@ class Device:
             self.command("shell", "rm", "-f", path)
 
     def tap_node(self, node):
+        if node.get("package"):
+            self.check_foreground({node.get("package")})
         left, top, right, bottom = bounds(node)
         self.command("shell", "input", "tap", str((left + right) // 2), str((top + bottom) // 2))
 
@@ -97,7 +109,7 @@ class Device:
             nodes = self.nodes({LAB, *SYSTEM})
             permission = [n for n in nodes if n.get("package", "").endswith("permissioncontroller")]
             if permission:
-                if not any("PocketDisco Capture Lab" in n.get("text", "") for n in permission):
+                if not names_lab(permission):
                     raise AssertionError("Permission prompt does not identify the lab")
                 choices = ("permission_allow_foreground_only_button", "permission_allow_button")
                 node = next((n for n in permission if n.get("resource-id", "").split("/")[-1] in choices), None)
@@ -105,12 +117,23 @@ class Device:
                 titles = {"Start now", "Start recording", "Share screen", "Share", "Start"} if accept else {"Cancel"}
                 node = next((n for n in nodes if n.get("package") == "com.android.systemui" and n.get("text") in titles and n.get("enabled") == "true"), None)
                 if node is not None:
+                    if not names_lab([n for n in nodes if n.get("package") == "com.android.systemui"]):
+                        raise AssertionError("Projection prompt does not identify the lab")
                     self.tap_node(node)
                     return
             if node is not None:
                 self.tap_node(node)
             time.sleep(.3)
         raise AssertionError(f"{self.label}: projection consent did not appear")
+
+    def dismiss_projection(self):
+        if self.foreground() != "com.android.systemui":
+            return
+        nodes = self.nodes({"com.android.systemui"})
+        if names_lab(nodes):
+            cancel = next((n for n in nodes if n.get("text") == "Cancel" and n.get("enabled") == "true"), None)
+            if cancel is not None:
+                self.tap_node(cancel)
 
     def report(self):
         raw = self.command("shell", "run-as", LAB, "cat", "files/report.json")
@@ -227,6 +250,8 @@ def main():
     output = args.output.resolve()
     if not output.is_relative_to(root):
         parser.error("Keep test output inside the repository")
+    if (output / "results.json").exists():
+        parser.error("Use a new output directory to preserve earlier test results")
     output.mkdir(parents=True, exist_ok=True)
     phone, emulator = Device(args.adb, args.phone, "phone"), Device(args.adb, args.emulator, "emulator")
     checks, touched = [], []
@@ -237,7 +262,7 @@ def main():
 
     try:
         for device in (phone, emulator):
-            device.check_foreground({LAB, SOURCE, *HOME})
+            device.check_foreground({LAB, SOURCE, *LAUNCHERS})
         with Forward(phone):
             for device in (phone, emulator):
                 touched.append(device)
@@ -252,6 +277,7 @@ def main():
     finally:
         for device in touched:
             try:
+                device.dismiss_projection()
                 if args.music_file and device is phone and device.foreground() == MUSIC:
                     device.command("shell", "input", "keyevent", "4")
             except RuntimeError:
