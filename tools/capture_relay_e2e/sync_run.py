@@ -89,6 +89,18 @@ def bluetooth_permission(device):
     raise AssertionError("Bluetooth permission did not settle")
 
 
+def host_tcp(device):
+    previous = device.report()["reportSequence"]
+    device.tap("Host USB/TCP test")
+    try:
+        device.wait_report(
+            lambda report: report["reportSequence"] > previous
+            and report["status"] == "USB/TCP listening on device loopback:18990",
+            timeout=5)
+    except AssertionError:
+        raise AssertionError(f"{device.label}: USB/TCP listener did not start") from None
+
+
 def timing_proof(report):
     relay, output = report["relay"], report["output"]
     if not relay.get("clockReady") or relay.get("timedFrames", 0) == 0:
@@ -184,12 +196,12 @@ def exercise(source, receivers, transport, peer_name, music_file, passed, sample
         receivers[0].tap(peer_name)
         for device in (source, receivers[0]):
             device.wait_report(lambda r: r["relay"]["peers"] == 1)
-        receivers[0].tap("Host USB/TCP test")
+        host_tcp(receivers[0])
         receivers[1].tap("Receive USB/TCP test")
         receivers[0].wait_report(lambda r: r["relay"]["peers"] == 2)
         receivers[1].wait_report(lambda r: r["relay"]["peers"] == 1)
     else:
-        source.tap("Host USB/TCP test")
+        host_tcp(source)
         for device in receivers:
             device.tap("Receive USB/TCP test" if device.serial.startswith("emulator-") else "Receive USB phone test")
         source.wait_report(lambda r: r["relay"]["peers"] == 2)

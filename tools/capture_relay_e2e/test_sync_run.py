@@ -7,9 +7,31 @@ from copy import deepcopy
 
 from sync_run import (
     LAB, SOURCE, QuietPlayback, REVERSE_PORT, Reverse, advancing_source,
-    advancing_timing, main, parse_args, read_final_reports, sample_count,
+    advancing_timing, host_tcp, main, parse_args, read_final_reports, sample_count,
     stop_devices, sustained_timing, timing_proof,
 )
+
+
+class HostListenerTest(unittest.TestCase):
+    def test_requires_a_fresh_listening_report_after_the_tap(self):
+        device = Mock(label="receiver")
+        device.report.return_value = {"reportSequence": 7}
+        host_tcp(device)
+        device.tap.assert_called_once_with("Host USB/TCP test")
+        ready = device.wait_report.call_args.args[0]
+        listening = {"reportSequence": 8, "status": "USB/TCP listening on device loopback:18990"}
+        self.assertTrue(ready(listening))
+        self.assertFalse(ready({**listening, "reportSequence": 7}))
+        self.assertFalse(ready({**listening, "status": "Peer connected"}))
+        self.assertEqual([item[0] for item in device.mock_calls], ["report", "tap", "wait_report"])
+
+    def test_failed_listener_stops_before_any_receiver_action(self):
+        device = Mock(label="receiver")
+        device.report.return_value = {"reportSequence": 7}
+        device.wait_report.side_effect = AssertionError("No fresh report")
+        with self.assertRaisesRegex(AssertionError, "receiver: USB/TCP listener did not start"):
+            host_tcp(device)
+        self.assertEqual(device.tap.call_count, 1)
 
 
 class SamplesArgumentTest(unittest.TestCase):
