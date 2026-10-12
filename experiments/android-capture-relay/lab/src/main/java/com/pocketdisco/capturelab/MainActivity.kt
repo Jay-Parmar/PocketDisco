@@ -24,7 +24,11 @@ import android.os.Build
 import android.os.Bundle
 import android.text.InputType
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowInsets
+import android.view.WindowManager
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -35,6 +39,7 @@ import android.widget.TextView
 
 class MainActivity : Activity() {
     private lateinit var code: EditText
+    private lateinit var screen: ScrollView
     private lateinit var metrics: TextView
     private lateinit var summary: TextView
     private lateinit var message: TextView
@@ -53,6 +58,7 @@ class MainActivity : Activity() {
         sourcePackage = savedInstanceState?.getString("source") ?: SOURCE_PACKAGE
         pendingConsent = savedInstanceState?.getBoolean("consent") ?: false
         window.decorView.systemUiVisibility = 0
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN or WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(20), dp(20), dp(32))
@@ -60,14 +66,18 @@ class MainActivity : Activity() {
         }
         val scroll = ScrollView(this).apply {
             addView(column)
+            isFocusableInTouchMode = true
+            descendantFocusability = ViewGroup.FOCUS_BEFORE_DESCENDANTS
             fitsSystemWindows = true
             isFillViewport = true
             setBackgroundColor(NIGHT)
         }
+        screen = scroll
         scroll.setOnApplyWindowInsetsListener { view, insets ->
             if (Build.VERSION.SDK_INT >= 30) {
                 val bars = insets.getInsets(WindowInsets.Type.systemBars())
-                view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+                val keyboard = insets.getInsets(WindowInsets.Type.ime())
+                view.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, keyboard.bottom))
             } else {
                 @Suppress("DEPRECATION")
                 view.setPadding(0, insets.systemWindowInsetTop, 0, insets.systemWindowInsetBottom)
@@ -92,6 +102,13 @@ class MainActivity : Activity() {
             contentDescription = "Session code"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             isSingleLine = true
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            setOnEditorActionListener { _, action, _ ->
+                if (action == EditorInfo.IME_ACTION_DONE) {
+                    closeCodeEditor()
+                    true
+                } else false
+            }
             textSize = 14f
             typeface = Typeface.MONOSPACE
             setTextColor(INK)
@@ -264,7 +281,16 @@ class MainActivity : Activity() {
         val value = code.text.toString().trim()
         val links = LabRuntime.configure(this, value)
         getPreferences(MODE_PRIVATE).edit().putString("code", value).apply()
+        closeCodeEditor()
         return links
+    }
+
+    private fun closeCodeEditor() {
+        if (!::code.isInitialized) return
+        code.clearFocus()
+        screen.requestFocus()
+        if (Build.VERSION.SDK_INT >= 30) window.insetsController?.hide(WindowInsets.Type.ime())
+        else getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(code.windowToken, 0)
     }
 
     private fun requestCapture() {
@@ -368,6 +394,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        closeCodeEditor()
         refresh()
     }
 
