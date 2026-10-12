@@ -15,7 +15,7 @@ SOURCE = LAB + ".source"
 MUSIC = "app.revanced.android.apps.youtube.music"
 PORT = "tcp:18990"
 SYSTEM = {"com.android.systemui", "com.android.permissioncontroller", "com.google.android.permissioncontroller"}
-LAUNCHERS = {"com.android.launcher3", "com.google.android.apps.nexuslauncher", "com.nothing.launcher"}
+LAUNCHERS = {"com.android.launcher3", "com.google.android.apps.nexuslauncher", "com.nothing.launcher", "com.sec.android.app.launcher"}
 
 
 def utc_now():
@@ -178,7 +178,9 @@ class Device:
     def report(self):
         raw = self.command("shell", "run-as", LAB, "cat", "files/report.json")
         report = json.loads(raw)
-        keys = ("diagnostic", "active", "status", "capture", "relay", "output", "sentPcm", "receivedPcm")
+        keys = ("diagnostic", "active", "status", "capture", "relay", "output", "sentPcm", "receivedPcm",
+                "synchronizedPlayback", "acousticSyncVerified", "sourceOutputSynchronized", "playoutDelayMillis")
+        keys += ("reportSequence", "observedAtNanos")
         self.latest = {key: report[key] for key in keys if key in report}
         return self.latest
 
