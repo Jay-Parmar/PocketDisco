@@ -64,12 +64,50 @@ Sanitized reports are under `.local-tools/remote-api-smoke/`,
 `.local-tools/mobile-e2e-playback-20261008/`.
 Screenshots may contain synthetic invites and are not committed.
 
+## Connection recovery: 2026-10-12
+
+The API and both datastores are still healthy on the installed runtime above.
+The API has reported no automatic restarts since its October 8 start. Backend
+code has not changed since that deployment, so no reinstall, migration or
+datastore restart was needed.
+
+The internal app was pointing at device loopback while the development tunnel
+and ADB reverse mappings were stopped. Restoring an SSH forward from PC
+`127.0.0.1:18080` to server `127.0.0.1:18080`, then mapping each selected
+device's port 8000 to PC port 18080, restored the private connection. Nothing
+and the emulator resumed their existing server rooms without clearing data.
+This route depends on the PC, USB/ADB and the SSH process staying connected.
+It is not the public endpoint or an offline backend.
+
+All nine remote room checks passed again. The sanitized report is
+`.local-tools/remote-api-smoke/deployment-20261012-1.json`. Local API regression
+tests passed 108 checks with eight real-datastore tests skipped. The remote
+smoke exercises the deployed PostgreSQL and Redis, but is not a substitute for
+the full integration suite.
+
+The router serving `satark` should forward TCP 80 and 443 to its verified LAN
+address, `192.168.5.187`, on the same destination ports. Reserve that address.
+Do not forward port 18080, SSH or datastore ports. No listener was present on
+80 or 443 at this check; forwarding alone does not provide HTTPS.
+
+An owned hostname remains preferable for a stable app endpoint, but is not
+mandatory for a static public IP. Let's Encrypt now supports IPv4 and IPv6
+certificates with a 160-hour lifetime and the `shortlived` ACME profile.
+An IP endpoint therefore needs tested automatic renewal and certificate-expiry
+monitoring before use. This updates the earlier hostname-only ingress gate,
+not the control-plane architecture. See the
+[official January 2026 announcement](https://letsencrypt.org/2026/01/15/6day-and-ip-general-availability).
+The observed outbound address is not proof that incoming router traffic reaches
+this server. Public forwarding, certificate issuance and independent-network
+phone access remain unverified.
+
 ## Before public access
 
 1. Confirm the public router can reach the Linux server. The development PC and
    server currently use different LAN subnets; forwarding to the wrong one will
    not expose this backend. Do not install an unapproved relay on the PC.
-2. Select an owned API hostname and configure DNS and HTTPS/WSS ingress. Normal
+2. Select an owned API hostname, or verify the owner's static public IP, and
+   configure HTTPS/WSS ingress with automatic certificate renewal. Normal
    direct ingress uses TCP 443, with TCP 80 for HTTP certificate validation.
    Never forward SSH, either datastore, or the internal API port.
 3. Set proxy body/header timeouts, connection limits and token-safe logs. Trust
