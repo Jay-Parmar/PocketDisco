@@ -331,17 +331,8 @@ class RelayNode(
     }
 
     private fun checkDeadlines() {
-        val now = System.nanoTime()
-        val expired = synchronized(lock) {
-            peers.filter { it.overflowed.get() || it.deadlineNanos != 0L && now - it.deadlineNanos >= 0 }
-        }
-        expired.forEach {
-            it.fail(when {
-                it.overflowed.get() -> "Slow peer queue full"
-                it.authenticated -> "Peer write timeout"
-                else -> "Peer handshake timeout"
-            })
-        }
+        val connected = synchronized(lock) { peers.toList() }
+        connected.forEach { it.checkDeadline() }
     }
 
     private fun event(message: String) {
@@ -365,7 +356,7 @@ class RelayNode(
         val overflowed = AtomicBoolean(false)
         @Volatile var authenticated = false
         @Volatile var remoteId: UUID? = null
-        @Volatile var deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(handshakeTimeoutMillis)
+        var deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(handshakeTimeoutMillis)
         @Volatile private var readerThread: Thread? = null
         @Volatile private var writerThread: Thread? = null
         private var controlWindowAt = 0L
@@ -429,10 +420,15 @@ class RelayNode(
                     queued.acquire()
                     if (stopped.get()) break
                     val packet = controls.poll() ?: queue.poll()?.let(::PcmPacket) ?: continue
-                    deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(writeTimeoutMillis)
+                    synchronized(lock) {
+                        if (stopped.get()) return
+                        deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(writeTimeoutMillis)
+                    }
                     PcmWire.writePacket(output, packet)
-                    deadlineNanos = 0
-                    if (packet is PcmPacket) synchronized(lock) { sentFrames++ }
+                    synchronized(lock) {
+                        deadlineNanos = 0
+                        if (packet is PcmPacket) sentFrames++
+                    }
                 }
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
@@ -451,14 +447,34 @@ class RelayNode(
         }
 
         fun fail(message: String) {
-            if (!stopped.compareAndSet(false, true)) return
-            synchronized(lock) {
-                removePeer(this)
-                if (!authenticated) rejectedPeers++
-                lastError = message
+            if (!synchronized(lock) { markFailed(message) }) return
+            closeStreams()
+            event(message)
+        }
+
+        fun checkDeadline() {
+            val message = synchronized(lock) {
+                if (closed || stopped.get()) return
+                val expired = deadlineExpired(System.nanoTime()) { deadlineNanos }
+                val message = when {
+                    overflowed.get() -> "Slow peer queue full"
+                    !expired -> return
+                    authenticated -> "Peer write timeout"
+                    else -> "Peer handshake timeout"
+                }
+                if (!markFailed(message)) return
+                message
             }
             closeStreams()
             event(message)
+        }
+
+        private fun markFailed(message: String): Boolean {
+            if (!stopped.compareAndSet(false, true)) return false
+            removePeer(this)
+            if (!authenticated) rejectedPeers++
+            lastError = message
+            return true
         }
 
         fun shutdown() {
@@ -489,4 +505,9 @@ class RelayNode(
         private const val PROBE_INTERVAL_NANOS = 1_000_000_000L
         private const val MAX_TIMED_LEAD_NANOS = 3_000_000_000L
     }
+}
+
+internal inline fun deadlineExpired(nowNanos: Long, readDeadline: () -> Long): Boolean {
+    val deadline = readDeadline()
+    return deadline != 0L && nowNanos - deadline >= 0
 }
