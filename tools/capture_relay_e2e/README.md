@@ -68,6 +68,11 @@ phone, Bluetooth or acoustic results.
 temporarily lowers media volume to at most 2, stops the owned test apps before
 restoring the previous volume, and preserves volume changes made during a run.
 It refuses busy ADB ports and unexpected foreground apps.
+Before tapping, the runner reads Android's status and navigation bar bounds
+and scrolls clipped controls into the usable display area. Unrecognized
+display geometry stops the test. USB/TCP setup also requires a fresh
+listener-ready report before connecting a receiver, so a missed Host action
+fails at setup.
 
 For an emulator source and two physical USB receivers:
 
@@ -106,7 +111,7 @@ add time. More than eight samples requires the continuous generated-tone
 source, so combining `--music-file` with a larger count is rejected before
 device work. The generated MP3 is finite, not a long-test source.
 
-Results retain the baseline, per-check observations and sampled error,
+Results retain the baseline even on failure, per-check observations and sampled error,
 uncertainty, non-silent frame counts, output progress and drop counters. On
 failure, partial samples are kept. Final read-only device reports are refreshed
 before cleanup so source errors are retained too; a failed read is recorded
