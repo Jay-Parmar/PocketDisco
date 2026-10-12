@@ -352,6 +352,22 @@ class DeviceSafetyTest(unittest.TestCase):
             self.device.find_id("welcome-screen")
         nodes.assert_not_called()
 
+    def test_clipped_leave_header_still_needs_a_safe_viewport_before_tapping(self):
+        clipped = Element("node", enabled="true", bounds="[750,0][980,94]")
+        visible = Element("node", enabled="true", bounds="[750,128][980,222]")
+        with (
+            patch.object(self.device, "find_id", side_effect=[clipped, visible]),
+            patch("rooms.system_bar_viewport", return_value=(0, 96, 1080, 2298)),
+            patch.object(self.device, "command"),
+            patch.object(self.device, "check_foreground") as guard,
+            patch.object(self.device, "scroll") as scroll,
+            patch.object(self.device, "tap_node") as tap,
+        ):
+            self.device.tap_id("leave-room-button")
+        scroll.assert_called_once_with(down=False, small=True)
+        guard.assert_called_once_with({PRODUCT})
+        tap.assert_called_once_with(visible)
+
     def test_leave_confirms_the_visible_product_dialog_before_waiting_for_welcome(self):
         button = Element(
             "node",
@@ -421,6 +437,55 @@ class ScenarioTest(unittest.TestCase):
         ):
             self.assertIs(device.find_id("leave-room-button"), button)
         scroll.assert_called_once_with(False)
+
+    def test_distant_leave_header_search_never_reverses_downward(self):
+        device = RoomDevice("adb", "test-device", "test")
+        button = Element("node", **{"resource-id": "leave-room-button"})
+        position = 6
+
+        def scroll(down):
+            nonlocal position
+            position += 1 if down else -1
+
+        with (
+            patch.object(
+                device,
+                "nodes",
+                side_effect=lambda unused: [button] if position == 0 else [],
+            ),
+            patch.object(device, "check_foreground") as guard,
+            patch.object(device, "scroll", side_effect=scroll) as swipe,
+            patch("rooms.time.sleep"),
+        ):
+            self.assertIs(device.find_id("leave-room-button"), button)
+        self.assertEqual(swipe.call_args_list, [call(False)] * 6)
+        self.assertEqual(guard.call_args_list, [call({PRODUCT})] * 6)
+
+    def test_missing_leave_header_search_is_bounded_and_upward_only(self):
+        device = RoomDevice("adb", "test-device", "test")
+        with (
+            patch.object(device, "nodes", return_value=[]) as nodes,
+            patch.object(device, "check_foreground") as guard,
+            patch.object(device, "scroll") as scroll,
+            patch("rooms.time.sleep"),
+            self.assertRaises(RoomFailure),
+        ):
+            device.find_id("leave-room-button")
+        self.assertEqual(nodes.call_count, 12)
+        self.assertEqual(scroll.call_args_list, [call(False)] * 12)
+        self.assertEqual(guard.call_args_list, [call({PRODUCT})] * 12)
+
+    def test_non_header_search_keeps_the_existing_bidirectional_scan(self):
+        device = RoomDevice("adb", "test-device", "test")
+        button = Element("node", **{"resource-id": "ready-toggle-button"})
+        with (
+            patch.object(device, "nodes", side_effect=[[], [], [], [], [], [button]]),
+            patch.object(device, "check_foreground"),
+            patch.object(device, "scroll") as scroll,
+            patch("rooms.time.sleep"),
+        ):
+            self.assertIs(device.find_id("ready-toggle-button"), button)
+        self.assertEqual(scroll.call_args_list, [call(True)] * 4 + [call(False)])
 
     def devices(self):
         devices = [Mock() for _ in range(3)]
