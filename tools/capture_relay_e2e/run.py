@@ -40,6 +40,57 @@ def bounds(node):
     return values if len(values) == 4 and values[2] > values[0] and values[3] > values[1] else None
 
 
+def system_bar_viewport(raw):
+    invalid = "Cannot verify the display's system-bar viewport"
+    frames = re.findall(r"\bmDisplayFrame=Rect\((-?\d+),\s*(-?\d+)\s*-\s*(-?\d+),\s*(-?\d+)\)", raw)
+    if len(frames) != 1 or len(re.findall(r"\bmDisplayFrame\b", raw)) != 1:
+        raise RuntimeError(invalid)
+    left, top, width, height = map(int, frames[0])
+    if left != 0 or top != 0 or width <= 0 or height <= 0:
+        raise RuntimeError(invalid)
+    lines = [line for line in raw.splitlines() if re.match(r"^\s*InsetsSource id=", line)
+             and re.search(r"\btype=(?:statusBars|navigationBars)\b", line)]
+    if len(lines) != 2:
+        raise RuntimeError(invalid)
+    viewport = [0, 0, width, height]
+    kinds, identifiers, edges, rectangles = set(), set(), set(), []
+    pattern = (r"^\s*InsetsSource id=(\S+) type=(statusBars|navigationBars) "
+               r"frame=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\] visible=true(?:\s|$)")
+    for line in lines:
+        match = re.match(pattern, line)
+        if match is None:
+            raise RuntimeError(invalid)
+        identifier, kind, *coordinates = match.groups()
+        if kind in kinds or identifier in identifiers:
+            raise RuntimeError(invalid)
+        kinds.add(kind)
+        identifiers.add(identifier)
+        left, top, right, bottom = map(int, coordinates)
+        if not (0 <= left < right <= width and 0 <= top < bottom <= height):
+            raise RuntimeError(invalid)
+        if left == 0 and right == width and top == 0 and bottom < height:
+            edge, limit = 1, bottom
+        elif left == 0 and right == width and bottom == height and top > 0:
+            edge, limit = 3, top
+        elif top == 0 and bottom == height and left == 0 and right < width:
+            edge, limit = 0, right
+        elif top == 0 and bottom == height and right == width and left > 0:
+            edge, limit = 2, left
+        else:
+            raise RuntimeError(invalid)
+        if edge in edges:
+            raise RuntimeError(invalid)
+        if any(max(left, other[0]) < min(right, other[2]) and
+               max(top, other[1]) < min(bottom, other[3]) for other in rectangles):
+            raise RuntimeError(invalid)
+        edges.add(edge)
+        rectangles.append((left, top, right, bottom))
+        viewport[edge] = limit
+    if viewport[0] >= viewport[2] or viewport[1] >= viewport[3]:
+        raise RuntimeError(invalid)
+    return tuple(viewport)
+
+
 class Device:
     def __init__(self, adb, serial, label):
         self.adb, self.serial, self.label = adb, serial, label
@@ -130,16 +181,19 @@ class Device:
         raise AssertionError(f"{self.label}: expected test control missing: {text}")
 
     def tap(self, text, package=LAB):
-        _, height = map(int, re.findall(r"(\d+)x(\d+)", self.command("shell", "wm", "size"))[-1])
         for attempt in range(8):
+            left_edge, top_edge, right_edge, bottom_edge = system_bar_viewport(
+                self.command("shell", "dumpsys", "window", "displays"))
             node = self.find(text, package)
-            _, top, _, bottom = bounds(node)
-            if height * .1 <= top < bottom <= height * .9:
+            left, top, right, bottom = bounds(node)
+            if not left_edge <= left < right <= right_edge:
+                raise AssertionError(f"{self.label}: control is outside the horizontal viewport: {text}")
+            if top_edge <= top < bottom <= bottom_edge:
                 self.tap_node(node)
                 return
             if attempt < 7:
                 self.check_foreground({package})
-                self.scroll(down=top >= height * .1, small=True)
+                self.scroll(down=top >= top_edge, small=True)
         raise AssertionError(f"{self.label}: control stayed near the screen edge: {text}")
 
     def fill_code(self, code):

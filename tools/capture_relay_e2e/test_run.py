@@ -4,7 +4,70 @@ from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 from xml.etree.ElementTree import Element
 
-from run import Device, Forward, LAB, LAUNCHERS, MUSIC, PORT, SOURCE, SYSTEM, audio_proof, bounds, passed_check, silence_proof, utc_now
+from run import Device, Forward, LAB, LAUNCHERS, MUSIC, PORT, SOURCE, SYSTEM, audio_proof, bounds, passed_check, silence_proof, system_bar_viewport, utc_now
+
+
+DISPLAY_LAYOUTS = ((1080, 2340, 96, 2298), (1084, 2412, 126, 2349), (1080, 2400, 128, 2337))
+
+
+def display_dump(width, height, top, bottom):
+    return (f"  mDisplayFrame=Rect(0, 0 - {width}, {height})\n"
+            f"    InsetsSource id=1 type=statusBars frame=[0,0][{width},{top}] visible=true flags=\n"
+            f"    InsetsSource id=2 type=navigationBars frame=[0,{bottom}][{width},{height}] visible=true flags=\n")
+
+
+class ViewportTest(unittest.TestCase):
+    def test_verified_device_layouts(self):
+        for width, height, top, bottom in DISPLAY_LAYOUTS:
+            with self.subTest(width=width, height=height):
+                self.assertEqual(system_bar_viewport(display_dump(width, height, top, bottom)),
+                                 (0, top, width, bottom))
+
+    def test_unrelated_insets_do_not_change_the_system_bar_viewport(self):
+        raw = display_dump(*DISPLAY_LAYOUTS[2])
+        raw += "    InsetsSource id=3 type=ime frame=[0,0][0,0] visible=false flags=\n"
+        self.assertEqual(system_bar_viewport(raw), (0, 128, 1080, 2337))
+
+    def test_provider_and_control_references_are_not_extra_state_rows(self):
+        raw = display_dump(*DISPLAY_LAYOUTS[2])
+        providers = "\n".join("    mSource=" + line.strip() for line in raw.splitlines()[1:])
+        controls = "\n    mControl=InsetsSourceControl id=1 type=statusBars\n"
+        self.assertEqual(system_bar_viewport(raw + providers + controls), (0, 128, 1080, 2337))
+
+    def test_missing_or_unrecognized_geometry_is_rejected_without_raw_output(self):
+        raw = display_dump(*DISPLAY_LAYOUTS[2])
+        cases = ("", raw.splitlines()[0], "\n".join(raw.splitlines()[1:]),
+                 raw.replace("visible=true", "visible=false"), raw.replace("visible=true", "visible=unknown"),
+                 raw.replace("InsetsSource id=1", "UnknownSource id=1"),
+                 raw.replace("Rect(0, 0 - 1080, 2400)", "Rect(0, 0 - unknown, 2400)"))
+        for malformed in cases:
+            with self.subTest(raw=malformed), self.assertRaises(RuntimeError) as error:
+                system_bar_viewport(malformed + "\nprivate unrelated window information")
+            self.assertEqual(str(error.exception), "Cannot verify the display's system-bar viewport")
+
+    def test_ambiguous_frames_and_sources_are_rejected(self):
+        raw = display_dump(*DISPLAY_LAYOUTS[2])
+        cases = (raw + raw.splitlines()[0], raw + raw.splitlines()[1], raw + display_dump(*DISPLAY_LAYOUTS[0]),
+                 raw.replace("type=navigationBars", "type=statusBars"), raw.replace("id=2", "id=1"))
+        for ambiguous in cases:
+            with self.subTest(raw=ambiguous), self.assertRaises(RuntimeError):
+                system_bar_viewport(ambiguous)
+
+    def test_bars_must_be_positive_full_edges_within_the_display(self):
+        raw = display_dump(*DISPLAY_LAYOUTS[2])
+        cases = (raw.replace("Rect(0, 0", "Rect(1, 0"), raw.replace("Rect(0, 0", "Rect(0, -1"),
+                 raw.replace("1080, 2400)", "0, 2400)"),
+                 raw.replace("[0,0][1080,128]", "[-1,0][1080,128]"),
+                 raw.replace("[0,0][1080,128]", "[0,0][1079,128]"),
+                 raw.replace("[0,0][1080,128]", "[0,10][1080,128]"),
+                 raw.replace("[0,0][1080,128]", "[0,0][1080,0]"),
+                 raw.replace("[0,0][1080,128]", "[0,0][1080,2400]"),
+                 raw.replace("[0,2337][1080,2400]", "[0,2337][1080,2401]"),
+                 raw.replace("[0,2337][1080,2400]", "[0,0][1080,63]"),
+                 raw.replace("[0,2337][1080,2400]", "[0,100][1080,2400]"))
+        for malformed in cases:
+            with self.subTest(raw=malformed), self.assertRaises(RuntimeError):
+                system_bar_viewport(malformed)
 
 
 class HelpersTest(unittest.TestCase):
@@ -173,12 +236,13 @@ class HelpersTest(unittest.TestCase):
 class TapTest(unittest.TestCase):
     def setUp(self):
         self.device = Device("adb", "test", "phone")
+        self.display = display_dump(*DISPLAY_LAYOUTS[0])
         self.visible = Element("node", package=LAB, text="Host USB/TCP test", bounds="[106,980][529,1098]")
 
     def test_scrolls_top_clipped_control_before_tapping(self):
         clipped = Element("node", package=LAB, text="Host USB/TCP test", bounds="[106,0][529,98]")
         with patch.object(self.device, "find", side_effect=[clipped, self.visible]) as find, \
-                patch.object(self.device, "command", return_value="Physical size: 1080x2400"), \
+                patch.object(self.device, "command", return_value=self.display), \
                 patch.object(self.device, "check_foreground") as guard, \
                 patch.object(self.device, "scroll") as scroll, patch.object(self.device, "tap_node") as tap:
             self.device.tap("Host USB/TCP test")
@@ -190,7 +254,7 @@ class TapTest(unittest.TestCase):
     def test_scrolls_bottom_clipped_control_before_tapping(self):
         clipped = Element("node", package=LAB, text="Host USB/TCP test", bounds="[106,2302][529,2400]")
         with patch.object(self.device, "find", side_effect=[clipped, self.visible]), \
-                patch.object(self.device, "command", return_value="Physical size: 1080x2400"), \
+                patch.object(self.device, "command", return_value=self.display), \
                 patch.object(self.device, "check_foreground"), \
                 patch.object(self.device, "scroll") as scroll, patch.object(self.device, "tap_node") as tap:
             self.device.tap("Host USB/TCP test")
@@ -199,20 +263,20 @@ class TapTest(unittest.TestCase):
 
     def test_visible_control_uses_current_bounds_without_scrolling(self):
         with patch.object(self.device, "find", return_value=self.visible), \
-                patch.object(self.device, "command", return_value="Physical size: 1080x2400") as command, \
+                patch.object(self.device, "command", return_value=self.display) as command, \
                 patch.object(self.device, "check_foreground") as guard, \
                 patch.object(self.device, "scroll") as scroll:
             self.device.tap("Host USB/TCP test")
         scroll.assert_not_called()
         guard.assert_called_once_with({LAB})
-        command.assert_any_call("shell", "wm", "size")
+        command.assert_any_call("shell", "dumpsys", "window", "displays")
         command.assert_called_with("shell", "input", "tap", "317", "1039")
 
     def test_nothing_source_file_button_needs_no_scroll(self):
         title = "Open generated file in music app"
         node = Element("node", package=SOURCE, text=title, bounds="[99,1995][985,2142]")
         with patch.object(self.device, "find", return_value=node) as find, \
-                patch.object(self.device, "command", return_value="Physical size: 1084x2412") as command, \
+                patch.object(self.device, "command", return_value=display_dump(*DISPLAY_LAYOUTS[1])) as command, \
                 patch.object(self.device, "check_foreground") as guard, \
                 patch.object(self.device, "scroll") as scroll:
             self.device.tap(title, SOURCE)
@@ -221,10 +285,25 @@ class TapTest(unittest.TestCase):
         guard.assert_called_once_with({SOURCE})
         command.assert_called_with("shell", "input", "tap", "542", "2068")
 
+    def test_fully_visible_last_button_needs_no_scroll_on_each_layout(self):
+        for width, height, top, bottom in DISPLAY_LAYOUTS:
+            with self.subTest(width=width, height=height):
+                node = Element("node", package=LAB, text="Show details",
+                               bounds=f"[100,{bottom - 140}][{width - 100},{bottom - 8}]")
+                dump = display_dump(width, height, top, bottom)
+
+                with patch.object(self.device, "find", return_value=node), \
+                        patch.object(self.device, "command", return_value=dump), \
+                        patch.object(self.device, "check_foreground"), \
+                        patch.object(self.device, "scroll") as scroll, patch.object(self.device, "tap_node") as tap:
+                    self.device.tap("Show details")
+                scroll.assert_not_called()
+                tap.assert_called_once_with(node)
+
     def test_clipped_control_has_bounded_scroll_attempts(self):
         clipped = Element("node", package=LAB, text="Host USB/TCP test", bounds="[106,0][529,98]")
         with patch.object(self.device, "find", return_value=clipped) as find, \
-                patch.object(self.device, "command", return_value="Physical size: 1080x2400"), \
+                patch.object(self.device, "command", return_value=self.display), \
                 patch.object(self.device, "check_foreground") as guard, \
                 patch.object(self.device, "scroll") as scroll, patch.object(self.device, "tap_node") as tap:
             with self.assertRaisesRegex(AssertionError, "control stayed near the screen edge"):
@@ -237,13 +316,33 @@ class TapTest(unittest.TestCase):
     def test_foreground_change_blocks_corrective_scroll(self):
         clipped = Element("node", package=SOURCE, text="Play allowed", bounds="[106,0][529,98]")
         with patch.object(self.device, "find", return_value=clipped) as find, \
-                patch.object(self.device, "command", return_value="Physical size: 1080x2400"), \
+                patch.object(self.device, "command", return_value=self.display), \
                 patch.object(self.device, "check_foreground", side_effect=AssertionError("unrelated app")) as guard, \
                 patch.object(self.device, "scroll") as scroll, patch.object(self.device, "tap_node") as tap:
             with self.assertRaisesRegex(AssertionError, "unrelated app"):
                 self.device.tap("Play allowed", SOURCE)
         find.assert_called_once_with("Play allowed", SOURCE)
         guard.assert_called_once_with({SOURCE})
+        scroll.assert_not_called()
+        tap.assert_not_called()
+
+    def test_unverified_viewport_stops_before_finding_or_tapping(self):
+        with patch.object(self.device, "command", return_value="private unrelated information"), \
+                patch.object(self.device, "find") as find, patch.object(self.device, "scroll") as scroll, \
+                patch.object(self.device, "tap_node") as tap:
+            with self.assertRaisesRegex(RuntimeError, "Cannot verify"):
+                self.device.tap("Show details")
+        find.assert_not_called()
+        scroll.assert_not_called()
+        tap.assert_not_called()
+
+    def test_horizontal_clipping_stops_without_a_vertical_scroll(self):
+        node = Element("node", package=LAB, text="Show details", bounds="[100,1000][1100,1140]")
+        with patch.object(self.device, "command", return_value=self.display), \
+                patch.object(self.device, "find", return_value=node), patch.object(self.device, "scroll") as scroll, \
+                patch.object(self.device, "tap_node") as tap:
+            with self.assertRaisesRegex(AssertionError, "outside the horizontal viewport"):
+                self.device.tap("Show details")
         scroll.assert_not_called()
         tap.assert_not_called()
 
