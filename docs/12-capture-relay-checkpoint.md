@@ -43,7 +43,7 @@ used ADB loopback TCP, not physical Bluetooth.
 - The complete generated-audio device suite passes: authenticated connection,
   cancelled consent, allowed capture, matching non-silent PCM hashes,
   advancing AudioTrack output, blocked-source silence, receiver background
-  disconnect/reconnect and clean stop.
+  disconnect/reconnect and source-session stop.
 - The installed music app played our generated MP3. Its selected-app audio
   reached the emulator with matching non-silent PCM hashes and advancing
   output. Capture remained silent while the other source UID played an
@@ -52,7 +52,8 @@ used ADB loopback TCP, not physical Bluetooth.
   zero connected peers and zero received frames.
 - Android's status-chip **Stop sharing** control revoked the lab's projection.
   The final report showed `active: false`, capture stopped with
-  `Capture permission revoked`, and no remaining projection or peers.
+  `Capture permission revoked`, and zero peers. A separate Android service
+  check confirmed there was no remaining projection.
 - Dark UI checked on both devices and at 320 dp / 1.5 font scale on the
   emulator. Fixed keyboard restoration covering reconnect controls and
   source content scrolling underneath system bars. Emulator size and font
