@@ -9,8 +9,10 @@ import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.UUID
+import java.util.concurrent.Callable
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.After
@@ -72,6 +74,57 @@ class RelayNodeTest {
         assertTrue(receivedC.all { it.sessionId == a.sessionId && it.hops == 2 })
         assertEquals(0L, a.snapshot().receivedFrames)
         assertEquals(10L, b.snapshot().sentFrames)
+    }
+
+    @Test
+    fun `A B C admission drops a second source before forwarding`() {
+        val receivedB = CopyOnWriteArrayList<AudioFrame>()
+        val receivedC = CopyOnWriteArrayList<AudioFrame>()
+        val a = node()
+        val b = RelayNode(code, onFrame = { receivedB.add(it) }, acceptSession = { it == a.sessionId })
+            .also(resources::add)
+        val c = node { receivedC.add(it) }
+        connect(a, b)
+        connect(b, c)
+        a.publish(pcm)
+        await { receivedC.size == 1 }
+
+        val secondSource = rawPeer(a)
+        PcmWire.writeFrame(secondSource.getOutputStream(), AudioFrame(UUID.randomUUID(), 0, 1, 1, pcm))
+        await { b.snapshot().droppedFrames == 1L }
+        a.publish(pcm)
+        await { receivedC.size == 2 && b.snapshot().sentFrames == 2L }
+
+        assertTrue(receivedB.all { it.sessionId == a.sessionId })
+        assertTrue(receivedC.all { it.sessionId == a.sessionId })
+        assertEquals(listOf(0L, 1L), receivedC.map { it.sequence })
+        assertEquals(2L, b.snapshot().receivedFrames)
+        assertEquals(2L, b.snapshot().sentFrames)
+        assertEquals(2L, c.snapshot().receivedFrames)
+    }
+
+    @Test
+    fun `admission runs outside state lock after self and duplicate rejection`() {
+        val observer = Executors.newSingleThreadExecutor()
+        val calls = AtomicInteger()
+        lateinit var relay: RelayNode
+        relay = RelayNode(code, acceptSession = {
+            observer.submit(Callable { relay.snapshot() }).get(2, TimeUnit.SECONDS)
+            calls.incrementAndGet()
+            true
+        }).also(resources::add)
+        try {
+            val peer = rawPeer(relay)
+            val session = UUID.randomUUID()
+            PcmWire.writeFrame(peer.getOutputStream(), AudioFrame(session, 0, 1, 1, pcm))
+            PcmWire.writeFrame(peer.getOutputStream(), AudioFrame(session, 0, 1, 1, pcm))
+            PcmWire.writeFrame(peer.getOutputStream(), AudioFrame(relay.sessionId, 0, 1, 1, pcm))
+            await { relay.snapshot().droppedFrames == 2L }
+            assertEquals(1, calls.get())
+            assertEquals(1L, relay.snapshot().receivedFrames)
+        } finally {
+            observer.shutdownNow()
+        }
     }
 
     @Test

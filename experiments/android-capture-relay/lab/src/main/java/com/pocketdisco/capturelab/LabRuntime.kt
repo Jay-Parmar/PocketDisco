@@ -48,12 +48,9 @@ object LabRuntime {
         val nextNode = RelayNode(code, onFrame = { frame ->
             synchronized(this) {
                 if (active && generation == currentGeneration) {
-                    if (receivedSession == null) receivedSession = frame.sessionId
                     if (receivedSession == frame.sessionId) {
                         receivedProof.add(frame.pcm)
                         speaker?.offer(frame.pcm)
-                    } else {
-                        status = "Only one source can play. Stop the session before switching sources."
                     }
                 }
             }
@@ -61,9 +58,25 @@ object LabRuntime {
             synchronized(this) {
                 if (active && generation == currentGeneration) status = event
             }
+        }, acceptSession = { session ->
+            synchronized(this) {
+                if (!active || generation != currentGeneration || CaptureBus.snapshot().running) {
+                    false
+                } else if (receivedSession == null || receivedSession == session) {
+                    receivedSession = session
+                    true
+                } else {
+                    status = "Only one source can play. Stop the session before switching sources."
+                    false
+                }
+            }
         })
         node = nextNode
-        links = LabLinks(appContext, nextNode) { status = it }
+        links = LabLinks(appContext, nextNode) { event ->
+            synchronized(this) {
+                if (active && generation == currentGeneration) status = event
+            }
+        }
         CaptureBus.onPcm = { pcm ->
             synchronized(this) {
                 if (active && generation == currentGeneration && nextNode.publish(pcm)) sentProof.add(pcm)
@@ -88,7 +101,14 @@ object LabRuntime {
     @Synchronized
     fun receive(context: Context) {
         check(!CaptureBus.snapshot().running) { "Stop capture before starting receiver playback" }
-        if (speaker == null) speaker = PcmSpeaker(context.applicationContext) { status = it }
+        if (speaker == null) {
+            val currentGeneration = generation
+            speaker = PcmSpeaker(context.applicationContext) { event ->
+                synchronized(this) {
+                    if (active && generation == currentGeneration) status = event
+                }
+            }
+        }
         speaker?.start()
     }
 

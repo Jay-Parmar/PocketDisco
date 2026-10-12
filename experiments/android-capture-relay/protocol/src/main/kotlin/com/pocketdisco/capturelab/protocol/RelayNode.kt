@@ -32,6 +32,7 @@ class RelayNode(
     private val handshakeTimeoutMillis: Long = 5_000,
     private val writeTimeoutMillis: Long = 5_000,
     private val queueCapacity: Int = 25,
+    private val acceptSession: (UUID) -> Boolean = { true },
 ) : Closeable {
     val nodeId: UUID = UUID.randomUUID()
     val sessionId: UUID = UUID.randomUUID()
@@ -127,6 +128,14 @@ class RelayNode(
                     droppedFrames++
                     return
                 }
+            }
+            if (!acceptSession(frame.sessionId)) {
+                synchronized(lock) { droppedFrames++ }
+                return
+            }
+            synchronized(lock) {
+                if (closed || source.stopped.get()) return
+                val previous = highestSequence[frame.sessionId]
                 if (previous == null && highestSequence.size >= MAX_SESSIONS) {
                     throw IOException("Stream limit reached")
                 }
