@@ -38,6 +38,37 @@ class RootClockTest {
     }
 
     @Test
+    fun `uncertainty grows with the age of the selected sample`() {
+        repeat(3) { sample(0) }
+        val initial = clock.estimate(local)!!
+        val aged = clock.estimate(local + 2_000_000_000L)!!
+
+        assertEquals(initial.ageNanos + 2_000_000_000L, aged.ageNanos)
+        assertEquals(400_000L, aged.uncertaintyNanos - initial.uncertaintyNanos)
+        assertEquals(10_000_000L + aged.ageNanos / 5_000, aged.uncertaintyNanos)
+        assertEquals(3, aged.samples)
+        assertTrue(aged.ready)
+    }
+
+    @Test
+    fun `age uncertainty crosses the readiness limit before samples expire`() {
+        repeat(3) { sample(0, outbound = 99_750_000, inbound = 99_750_000) }
+        val initial = clock.estimate(local)!!
+        assertTrue(initial.ready)
+        val boundaryAge = (RootClock.MAX_UNCERTAINTY_NANOS - 99_750_000L) * 5_000
+        val boundaryAt = local + boundaryAge - initial.ageNanos
+        val boundary = clock.estimate(boundaryAt)!!
+        val overLimit = clock.estimate(boundaryAt + 5_000)!!
+
+        assertTrue(boundary.ready)
+        assertEquals(3, overLimit.samples)
+        assertTrue(overLimit.ageNanos < RootClock.MAX_AGE_NANOS)
+        assertFalse(overLimit.ready)
+        assertEquals(RootClock.MAX_UNCERTAINTY_NANOS, boundary.uncertaintyNanos)
+        assertEquals(RootClock.MAX_UNCERTAINTY_NANOS + 1, overLimit.uncertaintyNanos)
+    }
+
+    @Test
     fun `asymmetric paths include offset error in uncertainty`() {
         val offset = -1_000_000_000L
         repeat(3) { sample(offset, outbound = 35_000_000, inbound = 5_000_000) }

@@ -68,8 +68,7 @@ internal class RootClock {
         val best = samples.minBy { it.roundTrip }
         val currentOffset = checkNotNull(offset)
         val age = now - best.receivedAt
-        val uncertainty = (best.roundTrip + 1) / 2 + distance(currentOffset, best.offset)
-            + age / 5_000
+        val uncertainty = (best.roundTrip + 1) / 2 + distance(currentOffset, best.offset) + age / 5_000
         return ClockEstimate(
             currentOffset, uncertainty, age, samples.size,
             samples.size >= MIN_SAMPLES && uncertainty <= MAX_UNCERTAINTY_NANOS,
