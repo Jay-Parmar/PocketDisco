@@ -284,7 +284,9 @@ class RoomDevice(ProductDevice):
 
     def leave(self):
         self.tap_id("leave-room-button")
+        self.confirm_leave()
 
+    def confirm_leave(self):
         def confirmation(nodes):
             texts = {node.get("text") for node in nodes}
             if not {"Leave this room?", "You can return with the room code."} <= texts:
