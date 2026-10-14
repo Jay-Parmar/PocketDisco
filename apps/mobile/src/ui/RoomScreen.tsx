@@ -67,26 +67,45 @@ export function RoomScreen({
   const [section, setSection] = useState<RoomSection>('room');
   const sectionOffsets = useRef({ room: 0, audio: Infinity, chat: Infinity });
   const errorOffset = useRef(0);
+  const pendingJump = useRef<{ y: number; expiresAt: number } | null>(null);
+
+  function activeJump() {
+    if (pendingJump.current && pendingJump.current.expiresAt <= Date.now()) {
+      pendingJump.current = null;
+    }
+    return pendingJump.current;
+  }
+
+  function settleScroll(animated: boolean) {
+    const jump = activeJump();
+    if (jump) {
+      scroll.current?.scrollTo({ y: jump.y, animated: false });
+    } else if (followMessages.current) {
+      scroll.current?.scrollToEnd({ animated });
+    }
+  }
 
   function goToSection(next: RoomSection) {
-    Keyboard.dismiss();
     followMessages.current = next === 'chat';
     setSection(next);
     if (next === 'chat') {
+      pendingJump.current = null;
+      Keyboard.dismiss();
       scroll.current?.scrollToEnd({ animated: true });
     } else {
       const offset =
         next === 'room' && error
           ? errorOffset.current
           : sectionOffsets.current[next];
-      scroll.current?.scrollTo({
-        y: Number.isFinite(offset) ? offset : 0,
-        animated: true,
-      });
+      const y = Number.isFinite(offset) ? offset : 0;
+      pendingJump.current = { y, expiresAt: Date.now() + 1000 };
+      Keyboard.dismiss();
+      scroll.current?.scrollTo({ y, animated: false });
     }
   }
 
   function showLatestMessages() {
+    pendingJump.current = null;
     followMessages.current = true;
     setSection('chat');
     scroll.current?.scrollToEnd({ animated: true });
@@ -190,8 +209,23 @@ export function RoomScreen({
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         scrollEventThrottle={80}
+        onScrollBeginDrag={() => {
+          pendingJump.current = null;
+          followMessages.current = false;
+        }}
         onScroll={({ nativeEvent }) => {
           const { contentOffset, layoutMeasurement, contentSize } = nativeEvent;
+          const jump = activeJump();
+          if (jump) {
+            const limit = Math.max(
+              0,
+              contentSize.height - layoutMeasurement.height,
+            );
+            if (Math.abs(contentOffset.y - Math.min(jump.y, limit)) <= 2) {
+              pendingJump.current = null;
+            }
+            return;
+          }
           followMessages.current =
             contentOffset.y + layoutMeasurement.height >=
             contentSize.height - 80;
@@ -204,16 +238,8 @@ export function RoomScreen({
               : 'room',
           );
         }}
-        onContentSizeChange={() => {
-          if (followMessages.current) {
-            scroll.current?.scrollToEnd({ animated: true });
-          }
-        }}
-        onLayout={() => {
-          if (followMessages.current) {
-            scroll.current?.scrollToEnd({ animated: false });
-          }
-        }}
+        onContentSizeChange={() => settleScroll(true)}
+        onLayout={() => settleScroll(false)}
       >
         <View style={styles.content}>
           <View style={styles.section} testID="room-section-room">

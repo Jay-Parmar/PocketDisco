@@ -127,11 +127,11 @@ test('section shortcuts scroll without unmounting audio or discarding a chat dra
     });
   });
   await press('room-nav-audio');
-  expect(scrollTo).toHaveBeenLastCalledWith({ y: 800, animated: true });
+  expect(scrollTo).toHaveBeenLastCalledWith({ y: 800, animated: false });
   await press('room-nav-chat');
   expect(scrollToEnd).toHaveBeenLastCalledWith({ animated: true });
   await press('room-nav-room');
-  expect(scrollTo).toHaveBeenLastCalledWith({ y: 0, animated: true });
+  expect(scrollTo).toHaveBeenLastCalledWith({ y: 0, animated: false });
   expect(composer.props.value).toBe('Keep my draft');
   expect(
     screen.root.findAllByProps({ testID: 'demo-player' }),
@@ -177,7 +177,7 @@ test('an early audio shortcut never passes an unmeasured offset to native scroll
     'scrollTo',
   );
   await press('room-nav-audio');
-  expect(scrollTo).toHaveBeenLastCalledWith({ y: 0, animated: true });
+  expect(scrollTo).toHaveBeenLastCalledWith({ y: 0, animated: false });
 });
 
 test('keeps a failed room action visible from chat and jumps to its details', async () => {
@@ -206,13 +206,87 @@ test('keeps a failed room action visible from chat and jumps to its details', as
     });
   });
   await press('room-nav-room');
-  expect(scrollTo).toHaveBeenLastCalledWith({ y: 290, animated: true });
+  expect(scrollTo).toHaveBeenLastCalledWith({ y: 290, animated: false });
   await act(async () => screen.update(<RoomScreen {...props} error={null} />));
   expect(
     screen.root.findAllByProps({ testID: 'room-error-shortcut' }),
   ).toHaveLength(0);
   await press('room-nav-room');
-  expect(scrollTo).toHaveBeenLastCalledWith({ y: 0, animated: true });
+  expect(scrollTo).toHaveBeenLastCalledWith({ y: 0, animated: false });
+});
+
+function scrollEvent(y: number) {
+  return {
+    nativeEvent: {
+      contentOffset: { y },
+      layoutMeasurement: { height: 600 },
+      contentSize: { height: 3000 },
+    },
+  };
+}
+
+test('keyboard resize and stale bottom events cannot hijack a room jump', async () => {
+  await render();
+  const scrolling = screen.root.findByType(ScrollView);
+  const scrollTo = jest.spyOn(scrolling.instance, 'scrollTo');
+  const scrollToEnd = jest.spyOn(scrolling.instance, 'scrollToEnd');
+  await press('room-nav-chat');
+  scrollToEnd.mockClear();
+  await press('room-nav-room');
+  await act(async () => {
+    scrolling.props.onScroll(scrollEvent(2400));
+    scrolling.props.onLayout();
+    scrolling.props.onContentSizeChange();
+  });
+  expect(scrollToEnd).not.toHaveBeenCalled();
+  expect(scrollTo).toHaveBeenLastCalledWith({ y: 0, animated: false });
+  expect(button('room-nav-room').props.accessibilityState.selected).toBe(true);
+  await act(async () => {
+    scrolling.props.onScroll(scrollEvent(0));
+    scrolling.props.onLayout();
+  });
+  expect(scrollToEnd).not.toHaveBeenCalled();
+});
+
+test('a real drag cancels a pending jump and follows the visible section', async () => {
+  await render();
+  const scrolling = screen.root.findByType(ScrollView);
+  await press('room-nav-room');
+  await act(async () => {
+    scrolling.props.onScrollBeginDrag();
+    scrolling.props.onScroll(scrollEvent(2400));
+  });
+  expect(button('room-nav-chat').props.accessibilityState.selected).toBe(true);
+});
+
+test('an unobserved jump expires instead of suppressing future accessibility scrolling', async () => {
+  const now = jest.spyOn(Date, 'now').mockReturnValue(1000);
+  try {
+    await render();
+    await press('room-nav-room');
+    now.mockReturnValue(2001);
+    await act(async () => {
+      screen.root.findByType(ScrollView).props.onScroll(scrollEvent(2400));
+    });
+    expect(button('room-nav-chat').props.accessibilityState.selected).toBe(
+      true,
+    );
+  } finally {
+    now.mockRestore();
+  }
+});
+
+test('focusing chat cancels a pending jump and follows the resized keyboard viewport', async () => {
+  await render();
+  const scrolling = screen.root.findByType(ScrollView);
+  const scrollToEnd = jest.spyOn(scrolling.instance, 'scrollToEnd');
+  await press('room-nav-audio');
+  await act(async () => {
+    screen.root.findByType(TextInput).props.onFocus();
+    scrolling.props.onLayout();
+  });
+  expect(scrollToEnd).toHaveBeenLastCalledWith({ animated: false });
+  expect(button('room-nav-chat').props.accessibilityState.selected).toBe(true);
 });
 
 test('sends readiness intent without pretending the server accepted it', async () => {
