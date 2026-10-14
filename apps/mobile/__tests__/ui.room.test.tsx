@@ -1,5 +1,5 @@
 import React from 'react';
-import { AppState } from 'react-native';
+import { AppState, ScrollView, StyleSheet, TextInput } from 'react-native';
 import ReactTestRenderer, { act } from 'react-test-renderer';
 
 import AudioPlayback from '../src/native/NativeAudioPlayback';
@@ -91,6 +91,93 @@ test('shows live members, roles, and their actual ready states', async () => {
   expect(JSON.stringify(screen.toJSON())).toContain(
     'Room playback is not connected yet.',
   );
+});
+
+test('keeps connection, room shortcuts and leaving outside the scrolled content', async () => {
+  await render();
+  const header = screen.root.findByProps({ testID: 'room-header' });
+  expect(header.findAllByType(ScrollView)).toHaveLength(0);
+  expect(
+    header.findAllByProps({ testID: 'leave-room-button' }).length,
+  ).toBeGreaterThan(0);
+  for (const section of ['room', 'audio', 'chat']) {
+    const shortcut = button(`room-nav-${section}`);
+    expect(shortcut.props.accessibilityRole).toBe('button');
+    const style =
+      typeof shortcut.props.style === 'function'
+        ? shortcut.props.style({ pressed: false })
+        : shortcut.props.style;
+    expect(StyleSheet.flatten(style).minHeight).toBeGreaterThanOrEqual(48);
+  }
+});
+
+test('section shortcuts scroll without unmounting audio or discarding a chat draft', async () => {
+  const native = jest.mocked(AudioPlayback);
+  native.prepare.mockClear();
+  native.disconnect.mockClear();
+  await render();
+  const scrolling = screen.root.findByType(ScrollView).instance;
+  const scrollTo = jest.spyOn(scrolling, 'scrollTo');
+  const scrollToEnd = jest.spyOn(scrolling, 'scrollToEnd');
+  const composer = screen.root.findByType(TextInput);
+  await act(async () => {
+    composer.props.onChangeText('Keep my draft');
+    screen.root.findByProps({ testID: 'room-section-audio' }).props.onLayout({
+      nativeEvent: { layout: { y: 800 } },
+    });
+  });
+  await press('room-nav-audio');
+  expect(scrollTo).toHaveBeenLastCalledWith({ y: 800, animated: true });
+  await press('room-nav-chat');
+  expect(scrollToEnd).toHaveBeenLastCalledWith({ animated: true });
+  await press('room-nav-room');
+  expect(scrollTo).toHaveBeenLastCalledWith({ y: 0, animated: true });
+  expect(composer.props.value).toBe('Keep my draft');
+  expect(
+    screen.root.findAllByProps({ testID: 'demo-player' }),
+  ).not.toHaveLength(0);
+  expect(native.prepare).not.toHaveBeenCalled();
+  expect(native.disconnect).not.toHaveBeenCalled();
+});
+
+test('scrolling updates the selected shortcut including long chat threads', async () => {
+  await render();
+  await act(async () => {
+    screen.root.findByProps({ testID: 'room-section-audio' }).props.onLayout({
+      nativeEvent: { layout: { y: 800 } },
+    });
+    screen.root.findByProps({ testID: 'room-section-chat' }).props.onLayout({
+      nativeEvent: { layout: { y: 1600 } },
+    });
+  });
+  for (const [y, section] of [
+    [0, 'room'],
+    [800, 'audio'],
+    [1700, 'chat'],
+  ] as const) {
+    await act(async () => {
+      screen.root.findByType(ScrollView).props.onScroll({
+        nativeEvent: {
+          contentOffset: { y },
+          layoutMeasurement: { height: 500 },
+          contentSize: { height: 3000 },
+        },
+      });
+    });
+    expect(
+      button(`room-nav-${section}`).props.accessibilityState.selected,
+    ).toBe(true);
+  }
+});
+
+test('an early audio shortcut never passes an unmeasured offset to native scroll', async () => {
+  await render();
+  const scrollTo = jest.spyOn(
+    screen.root.findByType(ScrollView).instance,
+    'scrollTo',
+  );
+  await press('room-nav-audio');
+  expect(scrollTo).toHaveBeenLastCalledWith({ y: 0, animated: true });
 });
 
 test('sends readiness intent without pretending the server accepted it', async () => {
