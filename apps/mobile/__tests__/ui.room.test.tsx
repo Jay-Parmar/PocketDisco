@@ -1,5 +1,12 @@
 import React from 'react';
-import { AppState, ScrollView, StyleSheet, TextInput } from 'react-native';
+import {
+  AppState,
+  DeviceEventEmitter,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+} from 'react-native';
 import ReactTestRenderer, { act } from 'react-test-renderer';
 
 import AudioPlayback from '../src/native/NativeAudioPlayback';
@@ -283,6 +290,46 @@ test('resizes short chat with the keyboard without losing a draft or remounting 
   expect(native.prepare).not.toHaveBeenCalled();
   expect(native.disconnect).not.toHaveBeenCalled();
 });
+
+test.each([
+  { height: 752, overlap: 256 },
+  { height: 496, overlap: 0 },
+])(
+  'Android avoids the measured keyboard overlap without double padding: %o',
+  async ({ height, overlap }) => {
+    const platform = jest.replaceProperty(Platform, 'OS', 'android');
+    try {
+      await render();
+      const avoidingView = () =>
+        screen.root.findAll(
+          node =>
+            node.props.testID === 'room-screen' &&
+            typeof node.props.onLayout === 'function',
+        )[0]!;
+      await act(async () => {
+        await avoidingView().props.onLayout({
+          persist: jest.fn(),
+          nativeEvent: { layout: { x: 0, y: 24, width: 360, height } },
+        });
+        DeviceEventEmitter.emit('keyboardDidShow', {
+          duration: 0,
+          easing: 'keyboard',
+          endCoordinates: { screenX: 0, screenY: 520, width: 360, height: 280 },
+        });
+      });
+      expect(StyleSheet.flatten(avoidingView().props.style).paddingBottom).toBe(
+        overlap,
+      );
+      await act(async () => DeviceEventEmitter.emit('keyboardDidHide', {}));
+      expect(StyleSheet.flatten(avoidingView().props.style).paddingBottom).toBe(
+        0,
+      );
+    } finally {
+      await act(async () => DeviceEventEmitter.emit('keyboardDidHide', {}));
+      platform.restore();
+    }
+  },
+);
 
 test('keyboard resize and stale bottom events cannot hijack a room jump', async () => {
   await render();

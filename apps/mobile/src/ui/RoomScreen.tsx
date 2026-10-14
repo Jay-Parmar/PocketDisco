@@ -115,7 +115,7 @@ export function RoomScreen({
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
       style={styles.screen}
       testID="room-screen"
     >
