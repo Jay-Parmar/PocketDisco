@@ -43,6 +43,7 @@ const connectionLabels: Record<ConnectionStatus, string> = {
 
 type RoomSection = 'room' | 'audio' | 'chat';
 const sections: readonly RoomSection[] = ['room', 'audio', 'chat'];
+const scrollPadding = 20;
 
 export function RoomScreen({
   room,
@@ -65,6 +66,7 @@ export function RoomScreen({
   const scroll = useRef<React.ElementRef<typeof ScrollView>>(null);
   const followMessages = useRef(false);
   const [section, setSection] = useState<RoomSection>('room');
+  const [viewportHeight, setViewportHeight] = useState(0);
   const sectionOffsets = useRef({ room: 0, audio: Infinity, chat: Infinity });
   const errorOffset = useRef(0);
   const pendingJump = useRef<{ y: number; expiresAt: number } | null>(null);
@@ -239,7 +241,10 @@ export function RoomScreen({
           );
         }}
         onContentSizeChange={() => settleScroll(true)}
-        onLayout={() => settleScroll(false)}
+        onLayout={({ nativeEvent }) => {
+          setViewportHeight(nativeEvent.layout.height);
+          settleScroll(false);
+        }}
       >
         <View style={styles.content}>
           <View style={styles.section} testID="room-section-room">
@@ -365,6 +370,9 @@ export function RoomScreen({
           </View>
           <View
             testID="room-section-chat"
+            style={{
+              minHeight: Math.max(0, viewportHeight - scrollPadding * 2),
+            }}
             onLayout={({ nativeEvent }) => {
               sectionOffsets.current.chat = nativeEvent.layout.y;
             }}
@@ -401,7 +409,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   headerContent: { width: '100%', maxWidth: 560, alignSelf: 'center', gap: 12 },
-  scrollContent: { paddingHorizontal: 20, paddingVertical: 20 },
+  scrollContent: { paddingHorizontal: 20, paddingVertical: scrollPadding },
   content: { width: '100%', maxWidth: 560, alignSelf: 'center', gap: 30 },
   section: { gap: 20 },
   sectionHeading: { gap: 8 },

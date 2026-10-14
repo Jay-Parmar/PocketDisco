@@ -225,6 +225,65 @@ function scrollEvent(y: number) {
   };
 }
 
+function viewportLayout(height: number) {
+  return { nativeEvent: { layout: { width: 360, height, x: 0, y: 0 } } };
+}
+
+test.each([0, 2])(
+  'gives a short chat with %i messages its own viewport',
+  async count => {
+    await render({
+      room: {
+        ...room,
+        messages: Array.from({ length: count }, (_, index) => ({
+          id: `short-${index}`,
+          user_id: 'sam',
+          display_name: 'Sam',
+          body: `Message ${index + 1}`,
+          created_at_ms: 1791374400000 + index,
+        })),
+      },
+    });
+    const scrolling = screen.root.findByType(ScrollView);
+    await act(async () => scrolling.props.onLayout(viewportLayout(600)));
+    const chatStyle = StyleSheet.flatten(
+      screen.root.findByProps({ testID: 'room-section-chat' }).props.style,
+    );
+    const padding = StyleSheet.flatten(
+      scrolling.props.contentContainerStyle,
+    ).paddingVertical;
+    expect(chatStyle.minHeight + 2 * padding).toBe(600);
+    expect(chatStyle.height).toBeUndefined();
+    const scrollToEnd = jest.spyOn(scrolling.instance, 'scrollToEnd');
+    await press('room-nav-chat');
+    expect(scrollToEnd).toHaveBeenLastCalledWith({ animated: true });
+  },
+);
+
+test('resizes short chat with the keyboard without losing a draft or remounting audio', async () => {
+  await render();
+  const native = jest.mocked(AudioPlayback);
+  native.prepare.mockClear();
+  native.disconnect.mockClear();
+  const scrolling = screen.root.findByType(ScrollView);
+  const scrollToEnd = jest.spyOn(scrolling.instance, 'scrollToEnd');
+  const composer = screen.root.findByType(TextInput);
+  await act(async () => composer.props.onChangeText('Keep this draft'));
+  await press('room-nav-chat');
+  for (const height of [700, 320, 700]) {
+    await act(async () => scrolling.props.onLayout(viewportLayout(height)));
+    const chatStyle = StyleSheet.flatten(
+      screen.root.findByProps({ testID: 'room-section-chat' }).props.style,
+    );
+    expect(chatStyle.minHeight).toBe(height - 40);
+    await act(async () => scrolling.props.onContentSizeChange());
+    expect(scrollToEnd).toHaveBeenLastCalledWith({ animated: true });
+  }
+  expect(composer.props.value).toBe('Keep this draft');
+  expect(native.prepare).not.toHaveBeenCalled();
+  expect(native.disconnect).not.toHaveBeenCalled();
+});
+
 test('keyboard resize and stale bottom events cannot hijack a room jump', async () => {
   await render();
   const scrolling = screen.root.findByType(ScrollView);
@@ -235,7 +294,7 @@ test('keyboard resize and stale bottom events cannot hijack a room jump', async 
   await press('room-nav-room');
   await act(async () => {
     scrolling.props.onScroll(scrollEvent(2400));
-    scrolling.props.onLayout();
+    scrolling.props.onLayout(viewportLayout(600));
     scrolling.props.onContentSizeChange();
   });
   expect(scrollToEnd).not.toHaveBeenCalled();
@@ -243,7 +302,7 @@ test('keyboard resize and stale bottom events cannot hijack a room jump', async 
   expect(button('room-nav-room').props.accessibilityState.selected).toBe(true);
   await act(async () => {
     scrolling.props.onScroll(scrollEvent(0));
-    scrolling.props.onLayout();
+    scrolling.props.onLayout(viewportLayout(600));
   });
   expect(scrollToEnd).not.toHaveBeenCalled();
 });
@@ -283,7 +342,7 @@ test('focusing chat cancels a pending jump and follows the resized keyboard view
   await press('room-nav-audio');
   await act(async () => {
     screen.root.findByType(TextInput).props.onFocus();
-    scrolling.props.onLayout();
+    scrolling.props.onLayout(viewportLayout(600));
   });
   expect(scrollToEnd).toHaveBeenLastCalledWith({ animated: false });
   expect(button('room-nav-chat').props.accessibilityState.selected).toBe(true);
