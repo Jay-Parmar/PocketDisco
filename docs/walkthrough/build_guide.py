@@ -233,7 +233,7 @@ class Guide:
             image = ImageReader(str(HERE / item["file"]))
             image_w, image_h = image.getSize()
             height = width * image_h / image_w
-            if height > 442:
+            if height > 390:
                 raise ValueError(f"Screenshot is too tall for its page: {key}")
             self.rect(x - 7, top - 7, width + 14, height + 14, INK, 18)
             self.c.drawImage(
@@ -412,6 +412,7 @@ class Guide:
             116,
         )
         top = 656
+        self.text("ROOM + CHAT CONNECTION", MARGIN, 639, 7.5, GREEN, BOLD)
         self.rect(MARGIN, top, WIDTH, 57, WASH, 14)
         self.text("PHONE", 62, top + 19, 9, GREEN, BOLD)
         self.arrow(105, top + 27, 170)

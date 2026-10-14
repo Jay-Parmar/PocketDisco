@@ -1,22 +1,47 @@
 {
   "date": "14 October 2026",
-  "build": "Pending final device build",
-  "final": false,
+  "build": "c9ebd01",
+  "final": true,
   "screenshots": {
     "welcome": {
       "file": "assets/welcome.png",
-      "source": ".local-tools/mobile-polish-20261014/emulator-welcome.png",
-      "build": "8782232",
+      "source": ".local-tools/mobile-polish-20261014/guide-c9ebd01/welcome.png",
+      "build": "c9ebd01",
       "description": "Unedited API 36 emulator screenshot of the internal Welcome screen with empty test fields.",
       "contains_invite": false,
-      "sha256": "fa4d2ad4de8b73b4c3ead413309ce6d1dda1728dfce60986d62f757f0c37b310"
+      "sha256": "ab012e3863e84e389339e54dbdc2e84c34edc89d275ad84726d55a4a841c69b4"
+    },
+    "room": {
+      "file": "assets/room.png",
+      "source": ".local-tools/mobile-polish-20261014/guide-c9ebd01/room.png",
+      "build": "c9ebd01",
+      "description": "Unedited API 36 emulator screenshot of the internal Room chat screen with synthetic messages and no room invitation visible.",
+      "contains_invite": false,
+      "sha256": "641793ad00777d40ecd95e98a58854f95e672376fcacc4cbebfb996fc28e2524"
+    },
+    "audio": {
+      "file": "assets/audio.png",
+      "source": ".local-tools/mobile-polish-20261014/guide-c9ebd01/audio.png",
+      "build": "c9ebd01",
+      "description": "Unedited API 36 emulator screenshot of the internal Audio corner, showing the generated local preview before playback.",
+      "contains_invite": false,
+      "sha256": "9a1586c393d98e6fcd5260873e9cbf423ee0683e6c3e23ea95d6a5a498b7ea92"
     }
   },
   "checks": [
-    {"label": "Room and chat", "result": "Current device run pending", "status": "pending"},
-    {"label": "Local audio preview", "result": "Current device run pending", "status": "pending"},
-    {"label": "Automated checks", "result": "Current verification pending", "status": "pending"}
+    {"label": "Room and chat", "result": "All 10 checks passed in one two-client run: join, readiness, chat, background recovery, restart, offline retry and clean exit.", "status": "passed"},
+    {"label": "Local audio preview", "result": "12 checks passed on Nothing and 12 on the emulator: play, pause, seek, replay, background, restart and stop on exit.", "status": "passed"},
+    {"label": "Generated-source USB experiment", "result": "All 4 checks passed: authenticated receiver, matching PCM, scheduled output and clean stop. Not a Bluetooth or acoustic sync test.", "status": "passed"}
   ],
-  "device_note": "This edition is waiting for the final phone and emulator results.",
-  "evidence": []
+  "device_note": "Nothing A142 and an API 36 emulator used the private USB route. POCO received the APK, but its USB security gate blocked installation. It was not tested.",
+  "evidence": [
+    "docs/14-mobile-ui-walkthrough.md",
+    ".local-tools/mobile-polish-20261014/rooms-two-c9ebd01/results.json",
+    ".local-tools/mobile-polish-20261014/demo-nothing-c9ebd01/results.json",
+    ".local-tools/mobile-polish-20261014/demo-emulator-c9ebd01/results.json",
+    ".local-tools/mobile-polish-20261014/nearby-c9ebd01/results.json",
+    ".local-tools/mobile-polish-20261014/nearby-c9ebd01/cleanup.json",
+    ".local-tools/mobile-polish-20261014/keyboard-nothing-01/results.json",
+    ".local-tools/mobile-polish-20261014/keyboard-emulator-01/results.json"
+  ]
 }
