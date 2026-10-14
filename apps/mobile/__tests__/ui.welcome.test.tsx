@@ -51,8 +51,24 @@ test('shows the alpha boundary and hides development settings in release', async
   await render({ showServerSettings: false });
   const tree = JSON.stringify(screen.toJSON());
   expect(tree).toContain('PRIVATE ROOM ALPHA');
-  expect(tree).toContain('Playback is coming next.');
+  expect(tree).toContain('Chat together, try audio locally.');
   expect(tree).not.toContain('server-settings-toggle');
+  expect(tree).not.toContain('server-connection-help');
+});
+
+test('explains the private USB route without claiming the server is reachable', async () => {
+  await render();
+  const content = JSON.stringify(screen.toJSON());
+  expect(content).toContain('USB test route.');
+  expect(content).toContain('server tunnel running.');
+  expect(content).not.toContain('Server address saved.');
+});
+
+test('does not give USB advice for a remote server', async () => {
+  await render({ serverUrl: 'https://rooms.example.com' });
+  expect(
+    screen.root.findAllByProps({ testID: 'server-connection-help' }),
+  ).toHaveLength(0);
 });
 
 test('explains missing fields without creating a room', async () => {

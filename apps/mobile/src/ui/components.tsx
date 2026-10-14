@@ -146,28 +146,29 @@ export function Brand() {
 
 export function RoomArtwork() {
   return (
-    <View
-      style={styles.artwork}
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-      pointerEvents="none"
-    >
+    <View style={styles.artwork} pointerEvents="none">
       <View style={styles.artworkCaption}>
-        <Text style={styles.artworkEyebrow}>YOURS, TOGETHER</Text>
-        <Text style={styles.artworkTitle}>
-          A little room.{`\n`}A lot of feeling.
+        <Text style={styles.artworkEyebrow}>PRIVATE ROOM ALPHA</Text>
+        <Text accessibilityRole="header" style={styles.artworkTitle}>
+          Your people.{`\n`}Your little room.
         </Text>
       </View>
-      <View style={styles.record}>
-        <View style={styles.recordGroove}>
-          <View style={styles.recordGrooveInner}>
-            <View style={styles.recordLabel}>
-              <View style={styles.recordHole} />
+      <View
+        style={styles.artworkVisual}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      >
+        <View style={styles.record}>
+          <View style={styles.recordGroove}>
+            <View style={styles.recordGrooveInner}>
+              <View style={styles.recordLabel}>
+                <View style={styles.recordHole} />
+              </View>
             </View>
           </View>
         </View>
+        <View style={styles.tonearm} />
       </View>
-      <View style={styles.tonearm} />
     </View>
   );
 }
@@ -220,7 +221,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   errorText: { fontSize: 14, lineHeight: 21, color: colors.error },
-  dismiss: { alignSelf: 'flex-start', minHeight: 44, paddingHorizontal: 0 },
+  dismiss: { alignSelf: 'flex-start', minHeight: 48, paddingHorizontal: 0 },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   brandMark: {
     width: 29,
@@ -241,28 +242,30 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.8,
     color: colors.ink,
+    flexShrink: 1,
   },
   artwork: {
-    minHeight: 142,
+    minHeight: 144,
     borderRadius: 23,
     backgroundColor: colors.coral,
-    padding: 19,
+    padding: 20,
     overflow: 'hidden',
     justifyContent: 'center',
   },
-  artworkCaption: { maxWidth: '63%', zIndex: 1 },
+  artworkCaption: { maxWidth: '78%', zIndex: 1 },
+  artworkVisual: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   artworkEyebrow: {
-    fontSize: 9,
+    fontSize: 10,
     letterSpacing: 1.2,
     fontWeight: '800',
     color: colors.ink,
-    marginBottom: 11,
+    marginBottom: 10,
   },
   artworkTitle: {
-    fontSize: 21,
-    lineHeight: 26,
-    fontWeight: '700',
-    letterSpacing: -0.7,
+    fontSize: 27,
+    lineHeight: 32,
+    fontWeight: '800',
+    letterSpacing: -1,
     color: colors.ink,
   },
   record: {
@@ -273,8 +276,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     position: 'absolute',
-    right: -12,
-    bottom: -17,
+    right: -42,
+    bottom: -32,
     transform: [{ rotate: '-18deg' }],
   },
   recordGroove: {
@@ -314,7 +317,7 @@ const styles = StyleSheet.create({
     height: 68,
     backgroundColor: colors.paper,
     position: 'absolute',
-    right: 30,
+    right: 18,
     top: -6,
     borderRadius: 3,
     transform: [{ rotate: '-23deg' }],

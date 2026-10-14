@@ -64,6 +64,9 @@ export function WelcomeScreen({
   const nameError = submitted ? validateDisplayName(displayName) : undefined;
   const roomError = submitted ? validateRoomName(roomName) : undefined;
   const inviteError = submitted ? validateInviteCode(inviteCode) : undefined;
+  const usesUsbRoute = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/?$/.test(
+    serverUrl,
+  );
 
   function submit() {
     if (busy) {
@@ -118,17 +121,6 @@ export function WelcomeScreen({
       >
         <View style={styles.content}>
           <Brand />
-          <View style={styles.hero}>
-            <View style={styles.alphaBadge}>
-              <Text style={styles.alphaText}>PRIVATE ROOM ALPHA</Text>
-            </View>
-            <Text accessibilityRole="header" style={styles.title}>
-              Good music.{`\n`}Better company.
-            </Text>
-            <Text style={styles.description}>
-              Make a little room for your people.
-            </Text>
-          </View>
           <RoomArtwork />
           {canResume && (
             <View style={styles.resumeCard}>
@@ -238,7 +230,7 @@ export function WelcomeScreen({
               }
             />
             <Text style={styles.formNote}>
-              Invite-only, up to 25 people. Playback is coming next.
+              Invite-only. Up to 25 people. Chat together, try audio locally.
             </Text>
           </View>
           {showServerSettings && (
@@ -296,6 +288,15 @@ export function WelcomeScreen({
               ) : (
                 <Text style={styles.serverAddress}>{serverUrl}</Text>
               )}
+              {usesUsbRoute && (
+                <Text
+                  style={styles.connectionHelp}
+                  testID="server-connection-help"
+                >
+                  USB test route. Keep this phone connected to the test PC with
+                  its server tunnel running.
+                </Text>
+              )}
             </View>
           )}
           <Text style={styles.footer}>
@@ -309,33 +310,17 @@ export function WelcomeScreen({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  scrollContent: { flexGrow: 1, paddingHorizontal: 22, paddingVertical: 24 },
-  content: { width: '100%', maxWidth: 560, alignSelf: 'center', gap: 24 },
-  hero: { gap: 12 },
-  alphaBadge: {
-    alignSelf: 'flex-start',
+  scrollContent: { flexGrow: 1, paddingHorizontal: 20, paddingVertical: 20 },
+  content: { width: '100%', maxWidth: 560, alignSelf: 'center', gap: 20 },
+  form: { gap: 16 },
+  resumeCard: {
+    gap: 12,
+    padding: 16,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: colors.line,
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    backgroundColor: colors.paper,
   },
-  alphaText: {
-    color: colors.muted,
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1.1,
-  },
-  title: {
-    color: colors.ink,
-    fontSize: 38,
-    lineHeight: 43,
-    fontWeight: '800',
-    letterSpacing: -1.5,
-  },
-  description: { color: colors.muted, fontSize: 16, lineHeight: 24 },
-  form: { gap: 20 },
-  resumeCard: { gap: 12 },
   tabs: {
     flexDirection: 'row',
     gap: 4,
@@ -387,6 +372,12 @@ const styles = StyleSheet.create({
   },
   serverAction: { fontSize: 14, color: colors.ink, fontWeight: '700' },
   serverAddress: { fontSize: 12, color: colors.muted, lineHeight: 18 },
+  connectionHelp: {
+    fontSize: 12,
+    color: colors.muted,
+    lineHeight: 18,
+    marginTop: 8,
+  },
   serverForm: { gap: 14, paddingTop: 8 },
   saved: { fontSize: 13, lineHeight: 19, color: colors.green },
   footer: {
