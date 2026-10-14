@@ -1,0 +1,22 @@
+{
+  "date": "14 October 2026",
+  "build": "Pending final device build",
+  "final": false,
+  "screenshots": {
+    "welcome": {
+      "file": "assets/welcome.png",
+      "source": ".local-tools/mobile-polish-20261014/emulator-welcome.png",
+      "build": "8782232",
+      "description": "Unedited API 36 emulator screenshot of the internal Welcome screen with empty test fields.",
+      "contains_invite": false,
+      "sha256": "fa4d2ad4de8b73b4c3ead413309ce6d1dda1728dfce60986d62f757f0c37b310"
+    }
+  },
+  "checks": [
+    {"label": "Room and chat", "result": "Current device run pending", "status": "pending"},
+    {"label": "Local audio preview", "result": "Current device run pending", "status": "pending"},
+    {"label": "Automated checks", "result": "Current verification pending", "status": "pending"}
+  ],
+  "device_note": "This edition is waiting for the final phone and emulator results.",
+  "evidence": []
+}
