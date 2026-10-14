@@ -102,13 +102,15 @@ Android UI dumps can wait for a playing progress bar to stop changing. The
 runner first verifies the visible controls, then plays briefly and pauses at
 the same coordinates before reading the position. Cached coordinates expire
 after 12 seconds, and each tap rechecks the foreground app and display bounds.
-The leave check must finish within 18 seconds of starting the 24-second clip,
-so a natural end cannot be mistaken for stopping on exit.
+The leave check must finish within 18 seconds of starting the 24-second clip.
 
 Where supported, the runner also checks the current Android player table for
 PocketDisco's AudioTrack state before and after leaving. It needs a `started`
-observation followed by two inactive observations. Unknown formats or missing
-telemetry produce `not_verified`, never a passing native-stop claim. This
+observation followed by two inactive observations, both completed before
+22 seconds from starting playback. Every probe and intervening wait rechecks
+that deadline so natural completion cannot count as stopping on exit. Late
+observations, unknown formats or missing telemetry produce `not_verified`,
+never a passing native-stop claim. This
 parser follows the Android source for
 [PlaybackActivityMonitor](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/services/core/java/com/android/server/audio/PlaybackActivityMonitor.java)
 and [AudioPlaybackConfiguration](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/media/java/android/media/AudioPlaybackConfiguration.java).
