@@ -1,7 +1,9 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import {
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -39,6 +41,10 @@ const connectionLabels: Record<ConnectionStatus, string> = {
   offline: 'Offline',
 };
 
+type RoomSection = 'room' | 'audio' | 'chat';
+const sections: readonly RoomSection[] = ['room', 'audio', 'chat'];
+const scrollPadding = 20;
+
 export function RoomScreen({
   room,
   currentUserId,
@@ -59,45 +65,76 @@ export function RoomScreen({
   const controlsDisabled = busy || !connected || !you;
   const scroll = useRef<React.ElementRef<typeof ScrollView>>(null);
   const followMessages = useRef(false);
+  const [section, setSection] = useState<RoomSection>('room');
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const sectionOffsets = useRef({ room: 0, audio: Infinity, chat: Infinity });
+  const errorOffset = useRef(0);
+  const pendingJump = useRef<{ y: number; expiresAt: number } | null>(null);
+
+  function activeJump() {
+    if (pendingJump.current && pendingJump.current.expiresAt <= Date.now()) {
+      pendingJump.current = null;
+    }
+    return pendingJump.current;
+  }
+
+  function settleScroll(animated: boolean) {
+    const jump = activeJump();
+    if (jump) {
+      scroll.current?.scrollTo({ y: jump.y, animated: false });
+    } else if (followMessages.current) {
+      scroll.current?.scrollToEnd({ animated });
+    }
+  }
+
+  function goToSection(next: RoomSection) {
+    followMessages.current = next === 'chat';
+    setSection(next);
+    if (next === 'chat') {
+      pendingJump.current = null;
+      Keyboard.dismiss();
+      scroll.current?.scrollToEnd({ animated: true });
+    } else {
+      const offset =
+        next === 'room' && error
+          ? errorOffset.current
+          : sectionOffsets.current[next];
+      const y = Number.isFinite(offset) ? offset : 0;
+      pendingJump.current = { y, expiresAt: Date.now() + 1000 };
+      Keyboard.dismiss();
+      scroll.current?.scrollTo({ y, animated: false });
+    }
+  }
 
   function showLatestMessages() {
+    pendingJump.current = null;
     followMessages.current = true;
+    setSection('chat');
     scroll.current?.scrollToEnd({ animated: true });
   }
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
       style={styles.screen}
       testID="room-screen"
     >
-      <ScrollView
-        ref={scroll}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        scrollEventThrottle={80}
-        onScroll={({ nativeEvent }) => {
-          const { contentOffset, layoutMeasurement, contentSize } = nativeEvent;
-          followMessages.current =
-            contentOffset.y + layoutMeasurement.height >=
-            contentSize.height - 80;
-        }}
-        onContentSizeChange={() => {
-          if (followMessages.current) {
-            scroll.current?.scrollToEnd({ animated: true });
-          }
-        }}
-        onLayout={() => {
-          if (followMessages.current) {
-            scroll.current?.scrollToEnd({ animated: false });
-          }
-        }}
-      >
-        <View style={styles.content}>
+      <View style={styles.header} testID="room-header">
+        <View style={styles.headerContent}>
           <View style={styles.topBar}>
             <View style={styles.brand}>
               <Brand />
+              <View style={styles.connection} accessibilityLiveRegion="polite">
+                <View
+                  style={[
+                    styles.connectionDot,
+                    connected && styles.connectedDot,
+                  ]}
+                />
+                <Text style={styles.connectionLabel}>
+                  {connectionLabels[connectionStatus]}
+                </Text>
+              </View>
             </View>
             <Button
               label={busy ? 'Please wait...' : 'Leave'}
@@ -108,108 +145,243 @@ export function RoomScreen({
               style={styles.leaveButton}
             />
           </View>
-          <View style={styles.roomHeading}>
-            <Text style={styles.eyebrow}>PRIVATE ROOM ALPHA</Text>
-            <Text accessibilityRole="header" style={styles.roomName}>
-              {room.name}
-            </Text>
-            <View style={styles.connection} accessibilityLiveRegion="polite">
-              <View
-                style={[styles.connectionDot, connected && styles.connectedDot]}
-              />
-              <Text style={styles.connectionLabel}>
-                {connectionLabels[connectionStatus]}
+          <View style={styles.navigation} accessibilityLabel="Room sections">
+            {sections.map(item => (
+              <Pressable
+                key={item}
+                testID={`room-nav-${item}`}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  item === 'room' && error
+                    ? `Room, view error. ${error}`
+                    : item === 'room'
+                    ? 'Room'
+                    : item === 'audio'
+                    ? 'Audio'
+                    : 'Chat'
+                }
+                accessibilityHint={`Scroll to ${
+                  item === 'room' && error
+                    ? 'the room error'
+                    : item === 'chat'
+                    ? 'the latest messages'
+                    : `the ${item} section`
+                }`}
+                accessibilityLiveRegion={item === 'room' ? 'polite' : undefined}
+                accessibilityState={{ selected: section === item }}
+                onPress={() => goToSection(item)}
+                style={({ pressed }) => [
+                  styles.navButton,
+                  section === item && styles.navSelected,
+                  pressed && styles.navPressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.navLabel,
+                    section === item && styles.navSelectedLabel,
+                  ]}
+                >
+                  {item === 'room'
+                    ? 'Room'
+                    : item === 'audio'
+                    ? 'Audio'
+                    : 'Chat'}
+                </Text>
+                {item === 'room' && error && (
+                  <Text
+                    testID="room-error-shortcut"
+                    style={[
+                      styles.navErrorHint,
+                      section === item && styles.navSelectedLabel,
+                    ]}
+                  >
+                    View error
+                  </Text>
+                )}
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      </View>
+      <ScrollView
+        ref={scroll}
+        testID="room-scroll"
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        scrollEventThrottle={80}
+        onScrollBeginDrag={() => {
+          pendingJump.current = null;
+          followMessages.current = false;
+        }}
+        onScroll={({ nativeEvent }) => {
+          const { contentOffset, layoutMeasurement, contentSize } = nativeEvent;
+          const jump = activeJump();
+          if (jump) {
+            const limit = Math.max(
+              0,
+              contentSize.height - layoutMeasurement.height,
+            );
+            if (Math.abs(contentOffset.y - Math.min(jump.y, limit)) <= 2) {
+              pendingJump.current = null;
+            }
+            return;
+          }
+          followMessages.current =
+            contentOffset.y + layoutMeasurement.height >=
+            contentSize.height - 80;
+          setSection(
+            (followMessages.current && contentOffset.y > 0) ||
+              contentOffset.y + 24 >= sectionOffsets.current.chat
+              ? 'chat'
+              : contentOffset.y + 24 >= sectionOffsets.current.audio
+              ? 'audio'
+              : 'room',
+          );
+        }}
+        onContentSizeChange={() => settleScroll(true)}
+        onLayout={({ nativeEvent }) => {
+          setViewportHeight(nativeEvent.layout.height);
+          settleScroll(false);
+        }}
+      >
+        <View style={styles.content}>
+          <View style={styles.section} testID="room-section-room">
+            <View style={styles.roomHeading}>
+              <Text style={styles.eyebrow}>YOUR PRIVATE ROOM</Text>
+              <Text accessibilityRole="header" style={styles.roomName}>
+                {room.name}
+              </Text>
+              <Text style={styles.body}>
+                A place to catch up before the music.
               </Text>
             </View>
-          </View>
-          {!connected && (
-            <View style={styles.connectionCard} testID="connection-notice">
-              <Text accessibilityRole="header" style={styles.noticeTitle}>
-                {connectionStatus === 'connecting'
-                  ? 'Joining the room...'
-                  : connectionStatus === 'reconnecting'
-                  ? 'Getting you back in.'
-                  : "You're offline."}
-              </Text>
-              <Text style={styles.noticeBody}>
-                This is the last known room state. Ready and chat controls will
-                return when you are connected.
-              </Text>
-              {connectionStatus === 'offline' && (
-                <Button
-                  label="Try again"
-                  tone="outline"
-                  onPress={onRetryConnection}
-                  disabled={busy}
-                  testID="retry-connection-button"
-                />
+            {!connected && (
+              <View style={styles.connectionCard} testID="connection-notice">
+                <Text accessibilityRole="header" style={styles.noticeTitle}>
+                  {connectionStatus === 'connecting'
+                    ? 'Joining the room...'
+                    : connectionStatus === 'reconnecting'
+                    ? 'Getting you back in.'
+                    : "You're offline."}
+                </Text>
+                <Text style={styles.noticeBody}>
+                  This is the last known room state. Ready and chat controls
+                  will return when you are connected.
+                </Text>
+                {connectionStatus === 'offline' && (
+                  <Button
+                    label="Try again"
+                    tone="outline"
+                    onPress={onRetryConnection}
+                    disabled={busy}
+                    testID="retry-connection-button"
+                  />
+                )}
+              </View>
+            )}
+            {error ? (
+              <View
+                testID="room-error-details"
+                onLayout={({ nativeEvent }) => {
+                  errorOffset.current = nativeEvent.layout.y;
+                }}
+              >
+                <ErrorBanner message={error} onDismiss={onDismissError} />
+              </View>
+            ) : null}
+            <View style={styles.inviteCard}>
+              <Text style={styles.inviteTitle}>Save a spot for a friend.</Text>
+              {inviteCode ? (
+                <>
+                  <Text style={styles.inviteHelp}>
+                    Send this room code to a friend.
+                  </Text>
+                  <Text
+                    selectable
+                    accessibilityLabel={`Invite code ${inviteCode
+                      .split('')
+                      .join(' ')}`}
+                    style={styles.inviteCode}
+                    testID="invite-code"
+                  >
+                    {inviteCode}
+                  </Text>
+                  <Button
+                    label="Share room invite"
+                    tone="dark"
+                    onPress={onShareInvite}
+                    disabled={busy}
+                    testID="share-invite-button"
+                  />
+                </>
+              ) : (
+                <Text style={styles.inviteHelp}>
+                  Ask the host for the invite code to bring a friend along.
+                </Text>
               )}
             </View>
-          )}
-          {error ? (
-            <ErrorBanner message={error} onDismiss={onDismissError} />
-          ) : null}
-          <View style={styles.inviteCard}>
-            <Text style={styles.inviteTitle}>Better with your people.</Text>
-            {inviteCode ? (
-              <>
-                <Text style={styles.inviteHelp}>
-                  Send this room code to a friend.
-                </Text>
-                <Text
-                  selectable
-                  accessibilityLabel={`Invite code ${inviteCode
-                    .split('')
-                    .join(' ')}`}
-                  style={styles.inviteCode}
-                  testID="invite-code"
-                >
-                  {inviteCode}
-                </Text>
-                <Button
-                  label="Share room invite"
-                  tone="dark"
-                  onPress={onShareInvite}
-                  disabled={busy}
-                  testID="share-invite-button"
-                />
-              </>
-            ) : (
-              <Text style={styles.inviteHelp}>
-                Ask the host for the invite code to bring a friend along.
+            <View style={styles.readyCard}>
+              <Text accessibilityRole="header" style={styles.sectionTitle}>
+                {you?.ready ? 'All settled in.' : 'Make yourself at home.'}
               </Text>
-            )}
+              <Text style={styles.body}>
+                Let the room know you are ready. This does not start or sync
+                audio.
+              </Text>
+              <Button
+                label={you?.ready ? 'Not ready yet' : "I'm ready"}
+                tone={you?.ready ? 'outline' : 'lime'}
+                onPress={() => {
+                  if (!controlsDisabled && you) {
+                    onReadyChange(!you.ready);
+                  }
+                }}
+                disabled={controlsDisabled}
+                testID="ready-toggle-button"
+              />
+            </View>
+            <MembersCard members={room.members} currentUserId={currentUserId} />
           </View>
-          <MembersCard members={room.members} currentUserId={currentUserId} />
-          <View style={styles.readyCard}>
-            <Text accessibilityRole="header" style={styles.sectionTitle}>
-              {you?.ready ? 'All settled in.' : 'Make yourself at home.'}
-            </Text>
-            <Text style={styles.body}>
-              Let the room know you are ready. This does not start audio yet.
-            </Text>
-            <Button
-              label={you?.ready ? 'Not ready yet' : "I'm ready"}
-              tone={you?.ready ? 'outline' : 'lime'}
-              onPress={() => {
-                if (!controlsDisabled && you) {
-                  onReadyChange(!you.ready);
-                }
-              }}
-              disabled={controlsDisabled}
-              testID="ready-toggle-button"
+          <View
+            style={styles.section}
+            testID="room-section-audio"
+            onLayout={({ nativeEvent }) => {
+              sectionOffsets.current.audio = nativeEvent.layout.y;
+            }}
+          >
+            <View style={styles.sectionHeading}>
+              <Text style={styles.eyebrow}>A LITTLE SOUND CHECK</Text>
+              <Text accessibilityRole="header" style={styles.sectionTitle}>
+                Audio corner
+              </Text>
+              <Text style={styles.body}>
+                Try the local demo. Shared room playback is still in
+                development.
+              </Text>
+            </View>
+            <DemoPlayer key={room.room_id} enabled={!busy && !!you} />
+            <NearbyAudioCard
+              key={`nearby-${room.room_id}`}
+              roomId={room.room_id}
+              canOpen={!controlsDisabled}
             />
           </View>
-          <NearbyAudioCard
-            key={`nearby-${room.room_id}`}
-            roomId={room.room_id}
-            canOpen={!controlsDisabled}
-          />
-          <DemoPlayer key={room.room_id} enabled={!busy && !!you} />
-          <MessageThread
-            messages={room.messages}
-            currentUserId={currentUserId}
-          />
+          <View
+            testID="room-section-chat"
+            style={{
+              minHeight: Math.max(0, viewportHeight - scrollPadding * 2),
+            }}
+            onLayout={({ nativeEvent }) => {
+              sectionOffsets.current.chat = nativeEvent.layout.y;
+            }}
+          >
+            <MessageThread
+              messages={room.messages}
+              currentUserId={currentUserId}
+            />
+          </View>
         </View>
       </ScrollView>
       <ChatComposer
@@ -228,16 +400,59 @@ export function RoomScreen({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  scrollContent: { paddingHorizontal: 22, paddingVertical: 22 },
-  content: { width: '100%', maxWidth: 560, alignSelf: 'center', gap: 22 },
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
+    backgroundColor: colors.background,
+  },
+  headerContent: { width: '100%', maxWidth: 560, alignSelf: 'center', gap: 12 },
+  scrollContent: { paddingHorizontal: 20, paddingVertical: scrollPadding },
+  content: { width: '100%', maxWidth: 560, alignSelf: 'center', gap: 30 },
+  section: { gap: 20 },
+  sectionHeading: { gap: 8 },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 12,
   },
-  brand: { flexGrow: 1 },
-  leaveButton: { minHeight: 44, paddingHorizontal: 14, paddingVertical: 10 },
+  brand: { flexGrow: 1, flexShrink: 1, gap: 5 },
+  leaveButton: { minHeight: 48, paddingHorizontal: 14, paddingVertical: 10 },
+  navigation: {
+    flexDirection: 'row',
+    padding: 4,
+    gap: 4,
+    borderRadius: 18,
+    backgroundColor: '#E9E9DF',
+  },
+  navButton: {
+    flex: 1,
+    minHeight: 48,
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+  },
+  navSelected: { backgroundColor: colors.ink },
+  navLabel: {
+    color: colors.muted,
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  navSelectedLabel: { color: colors.paper },
+  navErrorHint: {
+    color: colors.error,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  navPressed: { opacity: 0.75 },
   roomHeading: { gap: 9 },
   eyebrow: {
     fontSize: 10,
@@ -246,13 +461,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   roomName: {
-    fontSize: 34,
-    lineHeight: 40,
+    fontSize: 30,
+    lineHeight: 36,
     color: colors.ink,
     fontWeight: '800',
     letterSpacing: -1.1,
   },
-  connection: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  connection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingLeft: 2,
+  },
   connectionDot: {
     width: 7,
     height: 7,
@@ -260,7 +480,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.muted,
   },
   connectedDot: { backgroundColor: colors.green },
-  connectionLabel: { fontSize: 13, lineHeight: 19, color: colors.muted },
+  connectionLabel: { fontSize: 12, lineHeight: 18, color: colors.muted },
   connectionCard: {
     padding: 18,
     borderRadius: 20,
@@ -281,8 +501,8 @@ const styles = StyleSheet.create({
     gap: 11,
   },
   inviteTitle: {
-    fontSize: 23,
-    lineHeight: 29,
+    fontSize: 21,
+    lineHeight: 27,
     fontWeight: '700',
     letterSpacing: -0.8,
     color: colors.ink,
@@ -290,13 +510,20 @@ const styles = StyleSheet.create({
   inviteHelp: { fontSize: 14, lineHeight: 21, color: colors.ink },
   inviteCode: {
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    fontSize: 21,
-    lineHeight: 30,
-    letterSpacing: 1.9,
+    fontSize: 20,
+    lineHeight: 29,
+    letterSpacing: 1.2,
     color: colors.ink,
     marginVertical: 3,
   },
-  readyCard: { gap: 12 },
+  readyCard: {
+    gap: 12,
+    padding: 20,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.paper,
+  },
   sectionTitle: {
     fontSize: 21,
     fontWeight: '700',

@@ -4,6 +4,19 @@
 and Android multi-output experiment PRs into main. Those experiment merges
 do not establish acoustic synchronization or product playback readiness.
 
+## UI and device-test checkpoint: 2026-10-14
+
+The [current UI checkpoint](14-mobile-ui-walkthrough.md) records runtime
+`c9ebd01`, installed in place on Nothing and the API 36 emulator. The final
+two-client room and recovery run, each device's local-demo run, and the
+generated-source USB relay handoff pass. POCO installation is blocked by its
+USB security settings and is not counted as a device pass. The
+[illustrated walkthrough](walkthrough/PocketDisco-Walkthrough.pdf) explains
+the private USB route, current capabilities and a hands-on test lap.
+
+This adds no shared Internet music timeline, public HTTPS, reliable Bluetooth
+timing or Play release readiness. The earlier checkpoints below are retained.
+
 ## Server connection checkpoint: 2026-10-12
 
 [PR 11](https://github.com/Jay-Parmar/PocketDisco/pull/11) is stacked on PR 10.

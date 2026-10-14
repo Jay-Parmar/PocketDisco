@@ -71,6 +71,14 @@ class ViewportTest(unittest.TestCase):
 
 
 class HelpersTest(unittest.TestCase):
+    def test_recognizes_the_selected_miui_phone_launcher(self):
+        device = Device("adb", "private-device", "phone")
+        with patch.object(device, "foreground", return_value="com.mi.android.globallauncher"):
+            device.check_foreground(LAUNCHERS)
+        with patch.object(device, "foreground", return_value="com.mi.android.globallauncher.other"):
+            with self.assertRaises(AssertionError):
+                device.check_foreground(LAUNCHERS)
+
     def test_bounds_reject_clipped_nodes(self):
         for value in ("", "[0,0]", "[2,2][2,8]", "[2,5][8,3]"):
             self.assertIsNone(bounds(Element("node", bounds=value)))

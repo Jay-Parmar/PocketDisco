@@ -22,6 +22,8 @@ Build the room and synchronization engine first with audio that you own or are l
 - [Backend hosting decision and deployment prerequisites](docs/11-deployment-proposal.md)
 - [Capture relay lab checkpoint](docs/12-capture-relay-checkpoint.md)
 - [Synchronized nearby receiver checkpoint](docs/13-synchronized-capture.md)
+- [Mobile UI and device-test checkpoint](docs/14-mobile-ui-walkthrough.md)
+- [Illustrated Android walkthrough (PDF)](docs/walkthrough/PocketDisco-Walkthrough.pdf)
 
 ## Proposed eventual repository shape
 

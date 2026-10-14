@@ -16,17 +16,73 @@ from tools.mobile_e2e.run import port_number
 
 ROOT = Path(__file__).resolve().parents[2]
 NAMES = ("Room Host", "Room Friend A", "Room Friend B")
-ROOM_NAME = "PocketDisco Three Device Test"
+ROOM_NAME = "PocketDisco Room Test"
 HINTS = {
     "display-name-input": "What should we call you?",
     "room-name-input": "Friday night feels",
     "invite-code-input": "12-character room code",
     "chat-message-input": "Say something good...",
 }
+STAGES = {
+    "starting",
+    "backend_health",
+    "foreground_preflight",
+    "api_mapping",
+    "welcome_preflight",
+    "create_room",
+    "host_connected",
+    "read_invite",
+    "join_room",
+    "guest_connected",
+    "joined_members",
+    "set_ready",
+    "ready_members",
+    "send_chat",
+    "receive_chat",
+    "background_friend",
+    "friend_away",
+    "send_background_chat",
+    "background_return",
+    "background_connected",
+    "background_missed_chat",
+    "background_members",
+    "restart_host",
+    "restart_connected",
+    "restart_chat",
+    "restart_members",
+    "offline_start",
+    "offline_saved_room",
+    "offline_restore",
+    "offline_retry",
+    "offline_connected",
+    "offline_missed_chat",
+    "offline_members",
+    "leave_room",
+    "mapping_cleanup",
+    "complete",
+}
 
 
 class RoomFailure(RuntimeError):
     pass
+
+
+class RunProgress:
+    def __init__(self, device_count):
+        self.device_count = device_count
+        self.stage, self.device = "starting", None
+        self.events = []
+
+    def __call__(self, stage, device=None):
+        if stage not in STAGES or (
+            device is not None
+            and (type(device) is not int or not 1 <= device <= self.device_count)
+        ):
+            raise RoomFailure("invalid_test_stage")
+        self.stage, self.device = stage, device
+        self.events.append({"stage": stage, "device": device, "atUtc": utc_now()})
+        suffix = f" device {device}" if device is not None else ""
+        print(f"STEP {stage}{suffix}", flush=True)
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -137,8 +193,9 @@ def message_present(nodes, message):
 
 
 class RoomDevice(ProductDevice):
-    def __init__(self, adb, serial, label):
+    def __init__(self, adb, serial, label, names=NAMES):
         super().__init__(adb, serial, label)
+        self.names = tuple(names)
         self.fresh_check = False
         self.deadline = time.monotonic() + 900
         self.last_nodes = []
@@ -147,7 +204,14 @@ class RoomDevice(ProductDevice):
         self.check_foreground({PRODUCT, *LAUNCHERS})
         super().launch_product()
 
-    def wait_ui(self, predicate, scroll=False, up_only=False):
+    def wait_ui(
+        self,
+        predicate,
+        scroll=False,
+        up_only=False,
+        down_only=False,
+        small_scroll=False,
+    ):
         deadline = min(time.monotonic() + 30, self.deadline)
         for attempt in range(12):
             if time.monotonic() >= deadline:
@@ -164,7 +228,11 @@ class RoomDevice(ProductDevice):
                 return result
             if scroll:
                 self.check_foreground({PRODUCT})
-                self.scroll(False if up_only else attempt % 8 < 4)
+                direction = True if down_only else False if up_only else attempt % 8 < 4
+                if small_scroll:
+                    self.scroll(direction, small=True)
+                else:
+                    self.scroll(direction)
             time.sleep(0.25)
         raise RoomFailure("expected_ui_state_missing")
 
@@ -255,13 +323,33 @@ class RoomDevice(ProductDevice):
 
     def members(self, statuses=None):
         expected = statuses or {"Here", "Ready"}
+        self.tap_id("room-nav-room")
         self.wait_ui(
-            lambda nodes: all(member_present(nodes, name, expected) for name in NAMES),
+            lambda nodes: all(
+                member_present(nodes, name, expected) for name in self.names
+            ),
             scroll=True,
+            down_only=True,
+            small_scroll=True,
+        )
+
+    def member_status(self, name, statuses):
+        self.tap_id("room-nav-room")
+        self.wait_ui(
+            lambda nodes: member_present(nodes, name, statuses),
+            scroll=True,
+            down_only=True,
+            small_scroll=True,
         )
 
     def message(self, body):
-        self.wait_ui(lambda nodes: message_present(nodes, body), scroll=True)
+        self.tap_id("room-nav-chat")
+        self.wait_ui(
+            lambda nodes: message_present(nodes, body),
+            scroll=True,
+            up_only=True,
+            small_scroll=True,
+        )
 
     def send(self, body):
         self.fill_id("chat-message-input", body)
@@ -277,11 +365,25 @@ class RoomDevice(ProductDevice):
 
     def stop_product(self):
         self.check_foreground({PRODUCT})
-        self.command("shell", "am", "force-stop", PRODUCT)
+        self.command("shell", "input", "keyevent", "3")
+        deadline = min(time.monotonic() + 5, self.deadline)
+        for _ in range(25):
+            if time.monotonic() >= deadline:
+                break
+            foreground = self.foreground()
+            if foreground in LAUNCHERS:
+                self.command("shell", "am", "force-stop", PRODUCT)
+                return
+            if foreground and foreground != PRODUCT:
+                break
+            time.sleep(0.1)
+        raise RoomFailure("product_home_not_confirmed")
 
     def leave(self):
         self.tap_id("leave-room-button")
+        self.confirm_leave()
 
+    def confirm_leave(self):
         def confirmation(nodes):
             texts = {node.get("text") for node in nodes}
             if not {"Leave this room?", "You can return with the room code."} <= texts:
@@ -316,66 +418,109 @@ class RoomDevice(ProductDevice):
         self.wait_ui(clean_welcome)
 
 
-def exercise(devices, mappings, passed):
-    host, friend, retry = devices
+def exercise(devices, mappings, passed, progress=None):
+    if len(devices) not in (2, 3) or len(mappings) != len(devices):
+        raise RoomFailure("unsupported_device_count")
+    host, friend, retry = devices[0], devices[1], devices[-1]
+    names = NAMES[: len(devices)]
+    count_label = "two" if len(devices) == 2 else "three"
+    if progress is None:
+        progress = lambda *unused: None
+    progress("create_room", 1)
     host.fill_id("display-name-input", NAMES[0])
     host.fill_id("room-name-input", ROOM_NAME)
     host.tap_id("create-room-button")
+    progress("host_connected", 1)
     host.connected()
+    progress("read_invite", 1)
     invite = host.find_id("invite-code").get("text", "")
     if not re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{12}", invite):
         raise RoomFailure("unexpected_test_invite")
     passed("host creates a private room")
-    for device, name in zip(devices[1:], NAMES[1:], strict=True):
+    for index, (device, name) in enumerate(
+        zip(devices[1:], names[1:], strict=True), start=2
+    ):
+        progress("join_room", index)
         device.tap_id("join-tab")
         device.fill_id("display-name-input", name)
         device.fill_id("invite-code-input", invite)
         device.tap_id("join-room-button")
+        progress("guest_connected", index)
         device.connected()
-    for device in devices:
+    for index, device in enumerate(devices, start=1):
+        progress("joined_members", index)
         device.members()
-    passed("three devices join and see connected members")
-    for device in devices:
+    passed(f"{count_label} devices join and see connected members")
+    for index, device in enumerate(devices, start=1):
+        progress("set_ready", index)
+        device.tap_id("room-nav-room")
         device.tap_id("ready-toggle-button")
-    for device in devices:
+    for index, device in enumerate(devices, start=1):
+        progress("ready_members", index)
         device.members({"Ready"})
-    passed("readiness reaches all three devices")
-    messages = ("Hello from the host", "Hello from friend A", "Hello from friend B")
-    for device, message in zip(devices, messages, strict=True):
+    passed(f"readiness reaches all {count_label} devices")
+    messages = ("Hello from the host", "Hello from friend A", "Hello from friend B")[
+        : len(devices)
+    ]
+    for index, (device, message) in enumerate(
+        zip(devices, messages, strict=True), start=1
+    ):
+        progress("send_chat", index)
         device.send(message)
-    for device in devices:
+    for index, device in enumerate(devices, start=1):
+        progress("receive_chat", index)
         for message in messages:
             device.message(message)
     passed("each device sends and receives chat")
+    progress("background_friend", 2)
     friend.check_foreground({PRODUCT})
     friend.command("shell", "input", "keyevent", "3")
-    host.wait_ui(lambda nodes: member_present(nodes, NAMES[1], {"Away"}), scroll=True)
+    progress("friend_away", 1)
+    host.member_status(NAMES[1], {"Away"})
     background_message = "Message while a friend was away"
+    progress("send_background_chat", 1)
     host.send(background_message)
+    progress("background_return", 2)
     friend.launch_product()
+    progress("background_connected", 2)
     friend.connected()
+    progress("background_missed_chat", 2)
     friend.message(background_message)
-    for device in devices:
+    for index, device in enumerate(devices, start=1):
+        progress("background_members", index)
         device.members()
     passed("background return restores presence and missed chat")
+    progress("restart_host", 1)
     host.stop_product()
     host.launch_product()
+    progress("restart_connected", 1)
     host.connected()
-    host.message(messages[2])
-    for device in devices:
+    progress("restart_chat", 1)
+    host.message(messages[-1])
+    for index, device in enumerate(devices, start=1):
+        progress("restart_members", index)
         device.members()
     passed("host process restart restores the saved room")
+    progress("offline_start", len(devices))
     retry.stop_product()
-    with mappings[2].offline():
+    with mappings[-1].offline():
         retry.launch_product()
+        progress("offline_saved_room", len(devices))
         retry.find_id("resume-room-button")
+        progress("offline_restore", len(devices))
+    progress("offline_retry", len(devices))
     retry.tap_id("resume-room-button")
+    progress("offline_connected", len(devices))
     retry.connected()
+    progress("offline_missed_chat", len(devices))
     retry.message(background_message)
-    for device in devices:
+    for index, device in enumerate(devices, start=1):
+        progress("offline_members", index)
         device.members()
     passed("offline cold start retries after the API mapping returns")
-    for device in reversed(devices):
+    for index in range(len(devices), 0, -1):
+        progress("leave_room", index)
+        device = devices[index - 1]
         device.leave()
     passed("test members leave through the UI")
 
@@ -388,11 +533,11 @@ def parse_args(argv=None):
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
     if (
-        len(args.device) != 3
-        or len(set(args.device)) != 3
+        len(args.device) not in (2, 3)
+        or len(set(args.device)) != len(args.device)
         or any(not value.strip() for value in args.device)
     ):
-        parser.error("Use exactly three distinct explicit devices, with the host first")
+        parser.error("Use two or three distinct explicit devices, with the host first")
     return args
 
 
@@ -429,9 +574,12 @@ def main():
         print("FAIL use_new_local_tools_output", flush=True)
         return 2
     checks = []
+    names = NAMES[: len(args.device)]
+    count_label = "two" if len(args.device) == 2 else "three"
+    progress = RunProgress(len(args.device))
     report = {
         "startedAtUtc": utc_now(),
-        "deviceCount": 3,
+        "deviceCount": len(args.device),
         "package": PRODUCT,
         "transport": "ADB loopback through the configured SSH tunnel",
         "hostPort": args.host_port,
@@ -439,39 +587,66 @@ def main():
         "audioTested": False,
         "publicNetworkTested": False,
         "checks": checks,
+        "progress": progress.events,
     }
 
     def passed(name):
-        checks.append({"name": name, "result": "passed", "atUtc": utc_now()})
+        checks.append(
+            {
+                "name": name,
+                "result": "passed",
+                "stage": progress.stage,
+                "device": progress.device,
+                "atUtc": utc_now(),
+            }
+        )
         print(f"PASS {name}", flush=True)
 
     try:
         devices = [
-            RoomDevice(args.adb, serial, f"device {index + 1}")
+            RoomDevice(args.adb, serial, f"device {index + 1}", names=names)
             for index, serial in enumerate(args.device)
         ]
+        progress("backend_health")
         health(args.host_port)
         report["backend"] = "production"
         passed("production backend is healthy through the tunnel")
-        for device in devices:
+        for index, device in enumerate(devices, start=1):
+            progress("foreground_preflight", index)
             device.check_foreground({PRODUCT, *LAUNCHERS})
         with ExitStack() as stack:
-            mappings = [
-                stack.enter_context(ApiMapping(device, args.host_port))
-                for device in devices
-            ]
-            for device, name in zip(devices, NAMES, strict=True):
+            mappings = []
+            for index, device in enumerate(devices, start=1):
+                progress("api_mapping", index)
+                mappings.append(stack.enter_context(ApiMapping(device, args.host_port)))
+            for index, (device, name) in enumerate(
+                zip(devices, names, strict=True), start=1
+            ):
+                progress("welcome_preflight", index)
                 device.launch_product()
                 device.verify_welcome(name)
-            passed("three empty welcome screens use the expected device API address")
-            exercise(devices, mappings, passed)
+            passed(
+                f"{count_label} empty welcome screens use the expected device API address"
+            )
+            exercise(devices, mappings, passed, progress)
+            progress("mapping_cleanup")
+        progress("complete")
     except (Exception, KeyboardInterrupt) as error:  # noqa: BLE001
         reason = str(error) if isinstance(error, RoomFailure) else "device_check_failed"
         checks.append(
-            {"name": "run", "result": "failed", "reason": reason, "atUtc": utc_now()}
+            {
+                "name": "run",
+                "result": "failed",
+                "reason": reason,
+                "stage": progress.stage,
+                "device": progress.device,
+                "atUtc": utc_now(),
+            }
         )
         print(f"FAIL {reason}", flush=True)
     report["finishedAtUtc"] = utc_now()
+    report["stage"] = progress.stage
+    report["stageDevice"] = progress.device
     try:
         write_result(output, report)
     except OSError:

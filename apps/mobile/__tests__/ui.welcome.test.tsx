@@ -1,5 +1,10 @@
 import React from 'react';
-import { TextInput } from 'react-native';
+import {
+  DeviceEventEmitter,
+  Platform,
+  StyleSheet,
+  TextInput,
+} from 'react-native';
 import ReactTestRenderer, { act } from 'react-test-renderer';
 
 import { WelcomeScreen } from '../src/ui/WelcomeScreen';
@@ -51,9 +56,67 @@ test('shows the alpha boundary and hides development settings in release', async
   await render({ showServerSettings: false });
   const tree = JSON.stringify(screen.toJSON());
   expect(tree).toContain('PRIVATE ROOM ALPHA');
-  expect(tree).toContain('Playback is coming next.');
+  expect(tree).toContain('Chat together, try audio locally.');
   expect(tree).not.toContain('server-settings-toggle');
+  expect(tree).not.toContain('server-connection-help');
 });
+
+test('explains the private USB route without claiming the server is reachable', async () => {
+  await render();
+  const content = JSON.stringify(screen.toJSON());
+  expect(content).toContain('USB test route.');
+  expect(content).toContain('server tunnel running.');
+  expect(content).not.toContain('Server address saved.');
+});
+
+test('does not give USB advice for a remote server', async () => {
+  await render({ serverUrl: 'https://rooms.example.com' });
+  expect(
+    screen.root.findAllByProps({ testID: 'server-connection-help' }),
+  ).toHaveLength(0);
+});
+
+test.each([
+  { height: 752, overlap: 256 },
+  { height: 496, overlap: 0 },
+])(
+  'Android keeps form fields above the measured keyboard overlap: %o',
+  async ({ height, overlap }) => {
+    const platform = jest.replaceProperty(Platform, 'OS', 'android');
+    try {
+      await render();
+      await fill('display-name-input', 'Sam');
+      const avoidingView = () =>
+        screen.root.findAll(
+          node =>
+            node.props.testID === 'welcome-screen' &&
+            typeof node.props.onLayout === 'function',
+        )[0]!;
+      await act(async () => {
+        await avoidingView().props.onLayout({
+          persist: jest.fn(),
+          nativeEvent: { layout: { x: 0, y: 24, width: 360, height } },
+        });
+        DeviceEventEmitter.emit('keyboardDidShow', {
+          duration: 0,
+          easing: 'keyboard',
+          endCoordinates: { screenX: 0, screenY: 520, width: 360, height: 280 },
+        });
+      });
+      expect(StyleSheet.flatten(avoidingView().props.style).paddingBottom).toBe(
+        overlap,
+      );
+      await act(async () => DeviceEventEmitter.emit('keyboardDidHide', {}));
+      expect(StyleSheet.flatten(avoidingView().props.style).paddingBottom).toBe(
+        0,
+      );
+      expect(input('display-name-input').props.value).toBe('Sam');
+    } finally {
+      await act(async () => DeviceEventEmitter.emit('keyboardDidHide', {}));
+      platform.restore();
+    }
+  },
+);
 
 test('explains missing fields without creating a room', async () => {
   const props = await render();
