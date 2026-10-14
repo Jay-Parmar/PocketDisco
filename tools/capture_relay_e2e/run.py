@@ -15,7 +15,7 @@ SOURCE = LAB + ".source"
 MUSIC = "app.revanced.android.apps.youtube.music"
 PORT = "tcp:18990"
 SYSTEM = {"com.android.systemui", "com.android.permissioncontroller", "com.google.android.permissioncontroller"}
-LAUNCHERS = {"com.android.launcher3", "com.google.android.apps.nexuslauncher", "com.nothing.launcher", "com.sec.android.app.launcher"}
+LAUNCHERS = {"com.android.launcher3", "com.google.android.apps.nexuslauncher", "com.nothing.launcher", "com.sec.android.app.launcher", "com.mi.android.globallauncher"}
 
 
 def utc_now():
