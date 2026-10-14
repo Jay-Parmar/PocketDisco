@@ -78,6 +78,51 @@ directory under the repository's ignored `.local-tools` folder each time.
 This checks the deployed room control plane through the tunnel. It does not
 test public HTTPS, independent mobile networks, music playback or audio sync.
 
+## Generated local demo playback
+
+Use `demo.py` with one or two explicitly selected devices and the same private
+production-backend tunnel used by `rooms.py`. Each device creates and leaves
+its own fresh private room. This is not a shared-playback or synchronization
+test. Install the internal build with the Room, Audio and Chat shortcuts.
+Start at an empty welcome screen or launcher, with the saved API address set
+to `http://127.0.0.1:8000`. Saved rooms and personal drafts stop the test without
+being cleared.
+
+```powershell
+python tools/mobile_e2e/demo.py --adb .local-tools/android-sdk/platform-tools/adb.exe --device PHONE_SERIAL --device emulator-5554 --host-port 18080 --output .local-tools/mobile-demo-new
+```
+
+Omit the second `--device` to test only the phone. The runner plays only the
+bundled generated 24-second clip. It checks no autoplay on room entry,
+advancing native-backed playhead, explicit pause, five-second seeks that stay
+paused, natural end, replay, background pause, process recovery without
+autoplay, and a clean welcome screen after leaving during playback.
+
+Android UI dumps can wait for a playing progress bar to stop changing. The
+runner first verifies the visible controls, then plays briefly and pauses at
+the same coordinates before reading the position. Cached coordinates expire
+after 12 seconds, and each tap rechecks the foreground app and display bounds.
+The leave check must finish within 18 seconds of starting the 24-second clip,
+so a natural end cannot be mistaken for stopping on exit.
+
+Where supported, the runner also checks the current Android player table for
+PocketDisco's AudioTrack state before and after leaving. It needs a `started`
+observation followed by two inactive observations. Unknown formats or missing
+telemetry produce `not_verified`, never a passing native-stop claim. This
+parser follows the Android source for
+[PlaybackActivityMonitor](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/services/core/java/com/android/server/audio/PlaybackActivityMonitor.java)
+and [AudioPlaybackConfiguration](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/media/java/android/media/AudioPlaybackConfiguration.java).
+Raw system dumps, app UIDs, device serials, invites and screenshots are not
+written to the report. This does not record sound or measure acoustic timing.
+
+The runner preserves matching ADB mappings and removes only mappings it
+created. It temporarily lowers media volume if needed, restoring the previous
+level only if nobody changed it during testing. On failure after creating a
+test room, it stops only `com.pocketdisco.internal` before restoring volume.
+The failed test room may stay saved for inspection; leave it manually before
+rerunning. Foreground, saved-session, bounded command and 15-minute run guards
+match the room smoke test. Results go into a new ignored `.local-tools` folder.
+
 ## Internal nearby handoff
 
 Install the internal product and Test Source on a USB phone, and Capture Lab
