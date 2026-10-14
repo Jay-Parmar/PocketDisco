@@ -1,0 +1,42 @@
+name: Android walkthrough
+
+on:
+  pull_request:
+    paths:
+      - 'docs/walkthrough/**'
+      - '.github/workflows/walkthrough.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/walkthrough/**'
+      - '.github/workflows/walkthrough.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  guide:
+    name: Illustrated PDF
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: docs/walkthrough/requirements.txt
+      - name: Install PDF tools
+        run: python -m pip install -r docs/walkthrough/requirements.txt
+      - name: Test guide generation
+        run: python -m unittest discover -s docs/walkthrough -p 'test_*.py' -v
+      - name: Verify the committed guide
+        run: python docs/walkthrough/check_guide.py
+      - name: Rebuild the final edition
+        run: >-
+          python docs/walkthrough/build_guide.py
+          --output .local-tools/walkthrough-rebuilt.pdf
+      - name: Check reproducibility
+        run: cmp docs/walkthrough/PocketDisco-Walkthrough.pdf .local-tools/walkthrough-rebuilt.pdf
