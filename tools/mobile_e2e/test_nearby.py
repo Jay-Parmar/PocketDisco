@@ -6,6 +6,10 @@ from unittest.mock import MagicMock, Mock, call, patch
 from xml.etree.ElementTree import Element
 
 from nearby import (
+    LAB,
+    LAUNCHERS,
+    PRODUCT,
+    SOURCE,
     ApiReverse,
     ProductDevice,
     api_mapping,
@@ -164,6 +168,52 @@ class BackendModeTest(unittest.TestCase):
             receiver.command.assert_not_called()
             if not verified:
                 quiet.assert_not_called()
+
+    def test_receiver_foreground_is_rechecked_before_launch_after_phone_setup(self):
+        args = parse_args(
+            [*self.arguments, "--deployed-backend", "--host-port", "18080"]
+        )
+        phone, receiver = Mock(), Mock(latest={})
+        receiver.check_foreground.side_effect = [
+            None,
+            AssertionError("private foreground app"),
+        ]
+        receiver.launch.side_effect = AssertionError("launch must not happen")
+        with (
+            patch("nearby.parse_args", return_value=args),
+            patch.object(Path, "exists", return_value=False),
+            patch.object(Path, "mkdir"),
+            patch.object(Path, "write_text") as write,
+            patch("nearby.product_device", return_value=phone),
+            patch("nearby.Device", return_value=receiver),
+            patch("nearby.verify_backend", return_value="production"),
+            patch("nearby.api_mapping"),
+            patch("nearby.verify_product", return_value="PocketDisco Room Test"),
+            patch("nearby.QuietPlayback"),
+            patch("nearby.Forward"),
+            patch("builtins.print"),
+        ):
+            self.assertEqual(main(), 1)
+        phone.native.assert_called_once_with("Host USB/TCP test")
+        receiver.launch.assert_not_called()
+        self.assertEqual(
+            receiver.check_foreground.call_args_list,
+            [call({LAB, SOURCE, *LAUNCHERS})] * 2,
+        )
+        self.assertEqual(
+            phone.command.call_args_list,
+            [
+                call("shell", "am", "force-stop", package)
+                for package in (PRODUCT, SOURCE)
+            ],
+        )
+        self.assertEqual(
+            receiver.command.call_args_list,
+            [call("shell", "am", "force-stop", package) for package in (LAB, SOURCE)],
+        )
+        report = json.loads(write.call_args.args[0])
+        self.assertEqual(report["checks"][-1]["reason"], "nearby_check_failed")
+        self.assertNotIn("private foreground app", write.call_args.args[0])
 
 
 class ApiReverseTest(unittest.TestCase):

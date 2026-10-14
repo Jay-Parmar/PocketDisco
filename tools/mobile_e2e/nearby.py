@@ -307,6 +307,7 @@ def main():
                 code = secrets.token_hex(16)
                 phone.fill_session(code)
                 phone.native("Host USB/TCP test")
+                receiver.check_foreground({LAB, SOURCE, *LAUNCHERS})
                 receiver.launch()
                 receiver.fill_code(code)
                 receiver.tap("Receive USB/TCP test")
