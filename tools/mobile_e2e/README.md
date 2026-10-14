@@ -134,7 +134,24 @@ The product must use `http://127.0.0.1:8000`. Existing guest data is not cleared
 python tools/mobile_e2e/nearby.py --adb .local-tools/android-sdk/platform-tools/adb.exe --phone PHONE_SERIAL --emulator emulator-5554 --output .local-tools/product-nearby-new
 ```
 
-The runner checks the local-test backend and visible saved API address before
+To test against the existing deployed API without changing the app's saved
+server or credentials, explicitly select the healthy private SSH tunnel:
+
+```powershell
+python tools/mobile_e2e/nearby.py --adb .local-tools/android-sdk/platform-tools/adb.exe --phone PHONE_SERIAL --emulator emulator-5554 --deployed-backend --host-port 18080 --output .local-tools/product-nearby-deployed-new
+```
+
+This opt-in requires production backend health, an empty product welcome
+screen, no saved room or personal draft, and the saved device API address
+`http://127.0.0.1:8000`. It uses `Nearby Host` and `PocketDisco Room Test` as
+synthetic test input. Matching port 8000 mappings are preserved; conflicting
+mappings stop the run. Missing mappings use `--no-rebind` and are removed
+afterward. Preflight finishes before volume changes or diagnostic app cleanup.
+The default remains the isolated local-test API on host port 8000. Neither mode
+tests public HTTPS. Reports label the backend mode and private API transport,
+without storing raw failure messages.
+
+The runner checks the selected backend and visible saved API address before
 creating a test room. It opens the native nearby screen, authenticates the
 lab receiver over ADB loopback TCP, drives explicit Android capture consent,
 plays the generated tone, checks matching PCM and advancing scheduled output,
