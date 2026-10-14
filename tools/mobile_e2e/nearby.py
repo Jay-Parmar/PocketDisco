@@ -26,6 +26,7 @@ from tools.capture_relay_e2e.sync_run import (
     advancing_timing,
     timing_proof,
 )
+from tools.mobile_e2e.run import port_number
 
 PRODUCT = "com.pocketdisco.internal"
 
@@ -207,23 +208,76 @@ class ProductDevice(Device):
         raise AssertionError("Nearby report missing from the product UI")
 
 
-def main():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--adb", required=True)
     parser.add_argument("--phone", required=True)
     parser.add_argument("--emulator", default="emulator-5554")
+    parser.add_argument("--host-port", type=port_number, default=8000)
+    parser.add_argument("--deployed-backend", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
-    if args.phone == args.emulator or not args.emulator.startswith("emulator-"):
+    args = parser.parse_args(argv)
+    if (
+        not args.phone.strip()
+        or args.phone == args.emulator
+        or not args.emulator.startswith("emulator-")
+    ):
         parser.error("Use a distinct phone and emulator")
+    if args.host_port != 8000 and not args.deployed_backend:
+        parser.error("A different host port requires --deployed-backend")
+    return args
+
+
+def verify_backend(args):
+    if args.deployed_backend:
+        from tools.mobile_e2e.rooms import health
+
+        health(args.host_port)
+        return "production"
+    with urlopen("http://127.0.0.1:8000/healthz", timeout=5) as response:
+        if json.load(response).get("mode") != "local_test":
+            raise AssertionError("The host API is not in isolated local-test mode")
+    return "isolated local test"
+
+
+def api_mapping(device, args):
+    if args.deployed_backend:
+        from tools.mobile_e2e.rooms import ApiMapping
+
+        return ApiMapping(device, args.host_port)
+    return ApiReverse(device)
+
+
+def product_device(args):
+    if args.deployed_backend:
+        from tools.mobile_e2e.rooms import RoomDevice
+
+        return RoomDevice(args.adb, args.phone, "product phone", names=("Nearby Host",))
+    return ProductDevice(args.adb, args.phone, "product phone")
+
+
+def verify_product(device, args):
+    if args.deployed_backend:
+        from tools.mobile_e2e.rooms import ROOM_NAME
+
+        device.verify_welcome("Nearby Host")
+        return ROOM_NAME
+    device.verify_local_api()
+    return "Nearby Check"
+
+
+def main():
+    args = parse_args()
     output = args.output.resolve()
     if not output.is_relative_to(ROOT) or (output / "results.json").exists():
-        parser.error("Use a new output directory inside the repository")
+        print("FAIL use_new_repository_output", flush=True)
+        return 2
     output.mkdir(parents=True, exist_ok=True)
-    phone = ProductDevice(args.adb, args.phone, "product phone")
+    phone = product_device(args)
     receiver = Device(args.adb, args.emulator, "lab receiver")
     checks, source_report, audio_report = [], {}, {}
     local_api_verified = False
+    backend = "not verified"
     started = utc_now()
 
     def passed(name):
@@ -233,20 +287,18 @@ def main():
     try:
         phone.check_foreground({PRODUCT, LAB, SOURCE, *LAUNCHERS})
         receiver.check_foreground({LAB, SOURCE, *LAUNCHERS})
-        with urlopen("http://127.0.0.1:8000/healthz", timeout=5) as response:
-            if json.load(response).get("mode") != "local_test":
-                raise AssertionError("The host API is not in isolated local-test mode")
+        backend = verify_backend(args)
         with ExitStack() as stack:
+            stack.enter_context(api_mapping(phone, args))
+            phone.launch_product()
+            room_name = verify_product(phone, args)
+            local_api_verified = True
             stack.enter_context(QuietPlayback(phone))
             stack.enter_context(QuietPlayback(receiver))
-            stack.enter_context(ApiReverse(phone))
             stack.enter_context(Forward(phone))
             try:
-                phone.launch_product()
-                phone.verify_local_api()
-                local_api_verified = True
                 phone.fill_id("display-name-input", "Nearby Host")
-                phone.fill_id("room-name-input", "Nearby Check")
+                phone.fill_id("room-name-input", room_name)
                 phone.tap_id("create-room-button")
                 phone.find_id("room-screen")
                 passed("private room created in the internal product")
@@ -323,17 +375,25 @@ def main():
                             checks.append(
                                 {"name": "owned app cleanup", "result": "failed"}
                             )
-    except Exception as error:
-        checks.append({"name": "run", "result": "failed", "error": str(error)})
-        print(f"FAIL {error}", flush=True)
-        raise
+    except (Exception, KeyboardInterrupt):  # noqa: BLE001
+        checks.append(
+            {"name": "run", "result": "failed", "reason": "nearby_check_failed"}
+        )
+        print("FAIL nearby_check_failed", flush=True)
     finally:
         result = {
             "startedAtUtc": started,
             "finishedAtUtc": utc_now(),
             "transport": "ADB loopback TCP",
             "acousticSyncMeasured": False,
-            "backend": "isolated local test" if local_api_verified else "not verified",
+            "backend": backend if local_api_verified else "not verified",
+            "hostPort": args.host_port,
+            "apiTransport": (
+                "ADB loopback through the configured SSH tunnel"
+                if args.deployed_backend
+                else "ADB loopback local API"
+            ),
+            "publicNetworkTested": False,
             "checks": checks,
             "source": source_report,
             "playingReceiver": audio_report,
