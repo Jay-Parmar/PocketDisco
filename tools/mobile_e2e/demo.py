@@ -40,6 +40,7 @@ FAILURE_REASONS = {
     "existing_input_preserved",
     "expected_ui_state_missing",
     "leave_confirmation_not_visible",
+    "product_home_not_confirmed",
     "saved_room_present",
     "saved_server_preserved",
     "unrecognized_api_mapping",
@@ -260,21 +261,27 @@ class DemoDevice(RoomDevice):
         self.command("shell", "input", "keyevent", "3")
 
 
-def native_stop_verified(device, probe, before):
+def native_stop_verified(device, probe, before, deadline):
     if before is None or "started" not in before:
         return False
     for _ in range(5):
+        if time.monotonic() >= deadline:
+            return False
         after = probe.states()
-        if after is None:
+        if time.monotonic() >= deadline or after is None:
             return False
         if "started" not in after:
             device.wait(1)
+            if time.monotonic() >= deadline:
+                return False
             stable = probe.states()
-            if stable is None:
+            if time.monotonic() >= deadline or stable is None:
                 return False
             if "started" not in stable:
                 return True
         device.wait(0.5)
+        if time.monotonic() >= deadline:
+            return False
     raise RoomFailure("demo_native_player_stayed_active")
 
 
@@ -353,12 +360,18 @@ def exercise(device, name, passed, not_verified):
         raise RoomFailure("demo_leave_missed_active_clip")
     result["leaveCompletedAfterPlaySeconds"] = round(elapsed, 3)
     passed("leaving after starting the demo returns to a clean welcome screen")
-    result["nativeStopVerified"] = native_stop_verified(device, probe, before)
+    proof_deadline = started + DURATION - 2
+    result["nativeStopVerified"] = native_stop_verified(
+        device, probe, before, proof_deadline
+    )
     if result["nativeStopVerified"]:
         passed("native player stops after leaving")
     else:
         not_verified(
-            "native player stops after leaving", "system_playback_state_unavailable"
+            "native player stops after leaving",
+            "native_stop_window_expired"
+            if time.monotonic() >= proof_deadline
+            else "system_playback_state_unavailable",
         )
     return result
 

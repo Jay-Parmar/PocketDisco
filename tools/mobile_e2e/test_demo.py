@@ -2,6 +2,7 @@ import argparse
 import io
 import json
 import unittest
+from itertools import chain, repeat
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, call, patch
 from xml.etree.ElementTree import Element
@@ -14,6 +15,7 @@ from demo import (
     RoomFailure,
     exercise,
     main,
+    native_stop_verified,
     parse_args,
     playback_states,
     playhead_seconds,
@@ -125,6 +127,75 @@ class NativeStateTest(unittest.TestCase):
             probe = NativePlayback(device)
             self.assertIsNone(probe.states())
             self.assertEqual(device.command.call_count, 1)
+
+
+class NativeStopTest(unittest.TestCase):
+    def setUp(self):
+        self.now = 8.0
+        self.device = Mock()
+        self.device.wait.side_effect = self.advance
+        self.probe = Mock()
+        self.probe.states.return_value = set()
+
+    def advance(self, seconds):
+        self.now += seconds
+
+    def verify(self, before=None):
+        with patch("demo.time.monotonic", side_effect=lambda: self.now):
+            return native_stop_verified(
+                self.device, self.probe, {"started"} if before is None else before, 22
+            )
+
+    def test_two_inactive_observations_before_deadline_verify_stop(self):
+        self.assertTrue(self.verify())
+        self.assertEqual(self.probe.states.call_count, 2)
+        self.device.wait.assert_called_once_with(1)
+
+    def test_expired_window_never_reads_or_waits(self):
+        self.now = 22
+        self.assertFalse(self.verify())
+        self.probe.states.assert_not_called()
+        self.device.wait.assert_not_called()
+
+    def test_slow_first_probe_cannot_verify_natural_end(self):
+        def state():
+            self.now = 24
+            return set()
+
+        self.probe.states.side_effect = state
+        self.assertFalse(self.verify())
+        self.probe.states.assert_called_once()
+        self.device.wait.assert_not_called()
+
+    def test_wait_crossing_deadline_prevents_second_probe(self):
+        self.now = 21.5
+        self.assertFalse(self.verify())
+        self.probe.states.assert_called_once()
+        self.device.wait.assert_called_once_with(1)
+
+    def test_slow_second_probe_cannot_verify_natural_end(self):
+        def state():
+            if self.probe.states.call_count == 2:
+                self.now = 24
+            return set()
+
+        self.probe.states.side_effect = state
+        self.assertFalse(self.verify())
+        self.assertEqual(self.probe.states.call_count, 2)
+
+    def test_retry_wait_crossing_deadline_prevents_more_probes(self):
+        self.now = 21.5
+        self.probe.states.return_value = {"started"}
+        self.assertFalse(self.verify())
+        self.probe.states.assert_called_once()
+        self.device.wait.assert_called_once_with(0.5)
+
+    def test_unavailable_or_never_started_state_is_not_proof(self):
+        self.assertFalse(self.verify(before=set()))
+        self.probe.states.assert_not_called()
+        self.probe.states.return_value = None
+        self.assertFalse(self.verify())
+        self.device.wait.assert_not_called()
 
 
 class DeviceTest(unittest.TestCase):
@@ -326,7 +397,7 @@ class ScenarioTest(unittest.TestCase):
         probe.states.side_effect = [{"started"}, set(), set()]
         with (
             patch("demo.NativePlayback", return_value=probe),
-            patch("demo.time.monotonic", side_effect=[100.0, 108.0]),
+            patch("demo.time.monotonic", side_effect=chain([100.0], repeat(108.0))),
         ):
             result = exercise(device, "Room Host", passed, not_verified)
         self.assertTrue(result["nativeStopVerified"])
@@ -347,7 +418,7 @@ class ScenarioTest(unittest.TestCase):
         passed, not_verified = Mock(), Mock()
         with (
             patch("demo.NativePlayback", return_value=probe),
-            patch("demo.time.monotonic", side_effect=[100.0, 108.0]),
+            patch("demo.time.monotonic", side_effect=chain([100.0], repeat(108.0))),
         ):
             result = exercise(device, "Room Host", passed, not_verified)
         self.assertFalse(result["nativeStopVerified"])
@@ -387,10 +458,39 @@ class ScenarioTest(unittest.TestCase):
         probe.states.return_value = {"started"}
         with (
             patch("demo.NativePlayback", return_value=probe),
-            patch("demo.time.monotonic", side_effect=[100.0, 108.0]),
+            patch("demo.time.monotonic", side_effect=chain([100.0], repeat(108.0))),
             self.assertRaisesRegex(RoomFailure, "demo_native_player_stayed_active"),
         ):
             exercise(device, "Room Host", Mock(), Mock())
+
+    def test_slow_native_probe_cannot_mistake_natural_end_for_leave_stop(self):
+        device = self.device()
+        passed, not_verified = Mock(), Mock()
+        now = 0.0
+
+        def advance(seconds, **unused):
+            nonlocal now
+            now += seconds
+
+        def native_state():
+            advance(4)
+            return {"started"} if now < 54 else set()
+
+        device.wait.side_effect = advance
+        device.confirm_leave.side_effect = lambda: advance(10)
+        probe = Mock()
+        probe.states.side_effect = native_state
+        with (
+            patch("demo.NativePlayback", return_value=probe),
+            patch("demo.time.monotonic", side_effect=lambda: now),
+        ):
+            result = exercise(device, "Room Host", passed, not_verified)
+        self.assertEqual(result["leaveCompletedAfterPlaySeconds"], 17)
+        self.assertFalse(result["nativeStopVerified"])
+        not_verified.assert_called_once_with(
+            "native player stops after leaving", "native_stop_window_expired"
+        )
+        self.assertEqual(passed.call_count, 9)
 
 
 class MainTest(unittest.TestCase):
@@ -480,6 +580,46 @@ class MainTest(unittest.TestCase):
         quiet.assert_not_called()
         scenario.assert_not_called()
         device.command.assert_not_called()
+
+    def test_home_confirmation_failure_keeps_its_fixed_reason(self):
+        device = Mock(owns_product=True)
+        with (
+            patch("demo.parse_args", return_value=self.arguments()),
+            patch("demo.prepare_output", return_value=Mock()),
+            patch("demo.DemoDevice", return_value=device),
+            patch("demo.health"),
+            patch("demo.ApiMapping"),
+            patch("demo.QuietPlayback"),
+            patch(
+                "demo.exercise", side_effect=RoomFailure("product_home_not_confirmed")
+            ),
+            patch("demo.write_result") as write,
+            patch("builtins.print"),
+        ):
+            self.assertEqual(main(), 1)
+        self.assertEqual(
+            write.call_args.args[1]["checks"][-1]["reason"],
+            "product_home_not_confirmed",
+        )
+
+    def test_unknown_room_failure_cannot_escape_the_fixed_reason_whitelist(self):
+        device = Mock(owns_product=True)
+        with (
+            patch("demo.parse_args", return_value=self.arguments()),
+            patch("demo.prepare_output", return_value=Mock()),
+            patch("demo.DemoDevice", return_value=device),
+            patch("demo.health"),
+            patch("demo.ApiMapping"),
+            patch("demo.QuietPlayback"),
+            patch("demo.exercise", side_effect=RoomFailure("private invite value")),
+            patch("demo.write_result") as write,
+            patch("builtins.print") as printed,
+        ):
+            self.assertEqual(main(), 1)
+        report = write.call_args.args[1]
+        self.assertEqual(report["checks"][-1]["reason"], "demo_check_failed")
+        self.assertNotIn("private invite value", json.dumps(report))
+        self.assertNotIn("private invite value", str(printed.mock_calls))
 
 
 if __name__ == "__main__":
