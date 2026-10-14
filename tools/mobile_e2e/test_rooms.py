@@ -14,6 +14,7 @@ from rooms import (
     ApiMapping,
     RoomDevice,
     RoomFailure,
+    RunProgress,
     exercise,
     health,
     main,
@@ -339,13 +340,20 @@ class DeviceSafetyTest(unittest.TestCase):
             )
             for index, name in enumerate(NAMES[:2])
         ]
-        with patch.object(device, "wait_ui") as wait:
+        with (
+            patch.object(device, "wait_ui") as wait,
+            patch.object(device, "tap_id") as tap,
+        ):
             device.members({"Ready"})
+        tap.assert_called_once_with("room-nav-room")
         predicate = wait.call_args.args[0]
         self.assertTrue(predicate(nodes))
         self.assertFalse(predicate(nodes[:1]))
         self.assertFalse(predicate(nodes[1:]))
-        self.assertEqual(wait.call_args.kwargs, {"scroll": True})
+        self.assertEqual(
+            wait.call_args.kwargs,
+            {"scroll": True, "down_only": True, "small_scroll": True},
+        )
 
     def test_default_presence_still_requires_all_three_members(self):
         nodes = [
@@ -355,8 +363,12 @@ class DeviceSafetyTest(unittest.TestCase):
             )
             for index, name in enumerate(NAMES)
         ]
-        with patch.object(self.device, "wait_ui") as wait:
+        with (
+            patch.object(self.device, "wait_ui") as wait,
+            patch.object(self.device, "tap_id") as tap,
+        ):
             self.device.members()
+        tap.assert_called_once_with("room-nav-room")
         predicate = wait.call_args.args[0]
         self.assertTrue(predicate(nodes))
         self.assertFalse(predicate(nodes[:2]))
@@ -557,6 +569,102 @@ class DeviceSafetyTest(unittest.TestCase):
 
 
 class ScenarioTest(unittest.TestCase):
+    def test_room_shortcut_resets_tall_member_search_to_small_downward_steps(self):
+        device = RoomDevice("adb", "private-serial", "test", names=NAMES[:2])
+        position = 50
+        members = [
+            Element(
+                "node",
+                **{"resource-id": f"member-{index}", "content-desc": f"{name}, Ready"},
+            )
+            for index, name in enumerate(NAMES[:2])
+        ]
+
+        def navigate(identity):
+            nonlocal position
+            self.assertEqual(identity, "room-nav-room")
+            position = 0
+
+        def scroll(down, small):
+            nonlocal position
+            self.assertTrue(down)
+            self.assertTrue(small)
+            position += 1
+
+        with (
+            patch.object(device, "tap_id", side_effect=navigate) as navigation,
+            patch.object(
+                device,
+                "nodes",
+                side_effect=lambda unused: members if position == 6 else [],
+            ),
+            patch.object(device, "check_foreground"),
+            patch.object(device, "scroll", side_effect=scroll) as swipe,
+            patch("rooms.time.sleep"),
+        ):
+            device.members({"Ready"})
+        navigation.assert_called_once_with("room-nav-room")
+        self.assertEqual(swipe.call_args_list, [call(True, small=True)] * 6)
+
+    def test_chat_shortcut_searches_older_messages_upward_without_skipping(self):
+        device = RoomDevice("adb", "private-serial", "test")
+        message = Element(
+            "node",
+            **{
+                "resource-id": "message-test",
+                "content-desc": "Room Host, 12:00: test message",
+            },
+        )
+        with (
+            patch.object(device, "tap_id") as navigation,
+            patch.object(device, "nodes", side_effect=[[], [], [message]]),
+            patch.object(device, "check_foreground"),
+            patch.object(device, "scroll") as swipe,
+            patch("rooms.time.sleep"),
+        ):
+            device.message("test message")
+        navigation.assert_called_once_with("room-nav-chat")
+        self.assertEqual(swipe.call_args_list, [call(False, small=True)] * 2)
+
+    def test_away_check_requires_the_exact_member_and_status_in_the_room_section(self):
+        device = RoomDevice("adb", "private-serial", "test")
+        with (
+            patch.object(device, "tap_id") as navigation,
+            patch.object(device, "wait_ui") as wait,
+        ):
+            device.member_status(NAMES[1], {"Away"})
+        navigation.assert_called_once_with("room-nav-room")
+        predicate = wait.call_args.args[0]
+        away = Element(
+            "node",
+            **{"resource-id": "member-test", "content-desc": f"{NAMES[1]}, Away"},
+        )
+        here = Element(
+            "node",
+            **{"resource-id": "member-test", "content-desc": f"{NAMES[1]}, Here"},
+        )
+        other = Element(
+            "node",
+            **{"resource-id": "member-test", "content-desc": f"{NAMES[0]}, Away"},
+        )
+        self.assertTrue(predicate([away]))
+        self.assertFalse(predicate([here]))
+        self.assertFalse(predicate([other]))
+
+    def test_missing_members_still_fail_with_bounded_one_direction_search(self):
+        device = RoomDevice("adb", "private-serial", "test")
+        with (
+            patch.object(device, "tap_id"),
+            patch.object(device, "nodes", return_value=[]) as nodes,
+            patch.object(device, "check_foreground"),
+            patch.object(device, "scroll") as swipe,
+            patch("rooms.time.sleep"),
+            self.assertRaises(RoomFailure),
+        ):
+            device.members()
+        self.assertEqual(nodes.call_count, 12)
+        self.assertEqual(swipe.call_args_list, [call(True, small=True)] * 12)
+
     def test_leave_control_search_starts_toward_the_header(self):
         device = RoomDevice("adb", "test-device", "test")
         button = Element("node", **{"resource-id": "leave-room-button"})
@@ -705,6 +813,79 @@ class ScenarioTest(unittest.TestCase):
                 for device in devices:
                     device.leave.assert_not_called()
 
+    def test_recovery_stages_identify_missed_chat_and_member_failures(self):
+        for failing_check in ("chat", "members"):
+            devices = self.devices(2)
+            if failing_check == "chat":
+
+                def message(body):
+                    if body == "Message while a friend was away":
+                        raise RoomFailure("expected_ui_state_missing")
+
+                devices[1].message.side_effect = message
+            else:
+                devices[1].members.side_effect = [
+                    None,
+                    None,
+                    RoomFailure("expected_ui_state_missing"),
+                ]
+            progress = Mock()
+            mappings = [ApiMapping(MappingDevice("tcp:18080"), 18080) for _ in devices]
+            with (
+                self.subTest(failing_check=failing_check),
+                self.assertRaises(RoomFailure),
+            ):
+                exercise(devices, mappings, Mock(), progress)
+            self.assertEqual(
+                progress.call_args,
+                call(
+                    "background_missed_chat"
+                    if failing_check == "chat"
+                    else "background_members",
+                    2,
+                ),
+            )
+            progress.assert_any_call("friend_away", 1)
+            progress.assert_any_call("background_connected", 2)
+
+
+class ProgressTest(unittest.TestCase):
+    def test_progress_contains_fixed_stage_device_number_and_time_only(self):
+        progress = RunProgress(2)
+        with (
+            patch("builtins.print") as printer,
+            patch("rooms.utc_now", return_value="test-time"),
+        ):
+            progress("background_missed_chat", 2)
+        self.assertEqual(progress.stage, "background_missed_chat")
+        self.assertEqual(progress.device, 2)
+        self.assertEqual(
+            progress.events,
+            [{"stage": "background_missed_chat", "device": 2, "atUtc": "test-time"}],
+        )
+        printer.assert_called_once_with(
+            "STEP background_missed_chat device 2", flush=True
+        )
+
+    def test_progress_rejects_private_text_and_unknown_device_values_without_logging(
+        self,
+    ):
+        for stage, device in (
+            ("private invite token", 1),
+            ("background_missed_chat", "private-serial"),
+            ("background_members", 3),
+            ("background_members", True),
+        ):
+            progress = RunProgress(2)
+            with (
+                self.subTest(stage=stage, device=device),
+                patch("builtins.print") as printer,
+                self.assertRaisesRegex(RoomFailure, "^invalid_test_stage$"),
+            ):
+                progress(stage, device)
+            self.assertEqual(progress.events, [])
+            printer.assert_not_called()
+
 
 class FailureCleanupTest(unittest.TestCase):
     def arguments(self, count):
@@ -825,6 +1006,37 @@ class FailureCleanupTest(unittest.TestCase):
         self.assertEqual(
             write.call_args.args[1]["checks"][-1]["reason"], "saved_room_present"
         )
+
+    def test_failed_recovery_stage_is_saved_without_private_inputs(self):
+        def fail_recovery(unused_devices, unused_mappings, unused_passed, progress):
+            progress("background_return", 2)
+            progress("background_connected", 2)
+            progress("background_missed_chat", 2)
+            progress("background_members", 2)
+            raise RoomFailure("expected_ui_state_missing")
+
+        with (
+            patch("rooms.parse_args", return_value=self.arguments(2)),
+            patch("rooms.prepare_output", return_value=Mock()),
+            patch("rooms.RoomDevice", side_effect=[Mock(), Mock()]),
+            patch("rooms.health"),
+            patch("rooms.ApiMapping"),
+            patch("rooms.exercise", side_effect=fail_recovery),
+            patch("rooms.write_result") as write,
+            patch("builtins.print"),
+        ):
+            self.assertEqual(main(), 1)
+        report = write.call_args.args[1]
+        self.assertEqual(report["stage"], "background_members")
+        self.assertEqual(report["stageDevice"], 2)
+        self.assertEqual(report["checks"][-1]["stage"], "background_members")
+        self.assertEqual(report["checks"][-1]["device"], 2)
+        self.assertEqual(report["progress"][-1]["stage"], "background_members")
+        for event in report["progress"]:
+            self.assertEqual(set(event), {"stage", "device", "atUtc"})
+        serialized = json.dumps(report)
+        for private in ("private-a", "private-b", "Message while a friend was away"):
+            self.assertNotIn(private, serialized)
 
 
 if __name__ == "__main__":
