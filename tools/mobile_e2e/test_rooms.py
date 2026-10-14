@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, Mock, call, patch
 from xml.etree.ElementTree import Element
 
 from rooms import (
+    NAMES,
     PRODUCT,
     ROOT,
     ApiMapping,
@@ -142,14 +143,33 @@ class ConfigTest(unittest.TestCase):
         ".local-tools/room-test-unused",
     )
 
-    def test_requires_three_distinct_explicit_devices(self):
-        args = parse_args(self.arguments)
-        self.assertEqual(args.device, ["phone-a", "phone-b", "emulator-5554"])
-        self.assertEqual(args.host_port, 18080)
+    def test_accepts_two_or_three_distinct_explicit_devices(self):
+        for arguments, serials in (
+            (self.arguments, ["phone-a", "phone-b", "emulator-5554"]),
+            (self.arguments[:-4] + self.arguments[-2:], ["phone-a", "phone-b"]),
+        ):
+            with self.subTest(serials=serials):
+                args = parse_args(arguments)
+                self.assertEqual(args.device, serials)
+                self.assertEqual(args.host_port, 18080)
+
+    def test_rejects_unsupported_counts_duplicate_and_blank_devices(self):
         for arguments in (
-            self.arguments[:-4] + self.arguments[-2:],
+            self.arguments[:4] + self.arguments[-2:],
             [*self.arguments, "--device", "extra"],
             [value if value != "phone-b" else "phone-a" for value in self.arguments],
+            [value if value != "phone-b" else "" for value in self.arguments],
+            [value if value != "phone-b" else "  " for value in self.arguments],
+            [
+                "--adb",
+                "unused-adb",
+                "--device",
+                "phone-a",
+                "--device",
+                "phone-a",
+                "--output",
+                ".local-tools/room-test-unused",
+            ],
         ):
             with (
                 self.subTest(arguments=arguments),
@@ -309,6 +329,37 @@ class DeviceSafetyTest(unittest.TestCase):
         self.assertTrue(member_present([node], "Room Host", {"Ready"}))
         self.assertFalse(member_present([node], "Host", {"Ready"}))
         self.assertFalse(member_present([node], "Room Host", {"Away"}))
+
+    def test_two_device_presence_requires_both_selected_members_only(self):
+        device = RoomDevice("unused-adb", "private-serial", "device 1", names=NAMES[:2])
+        nodes = [
+            Element(
+                "node",
+                **{"resource-id": f"member-{index}", "content-desc": f"{name}, Ready"},
+            )
+            for index, name in enumerate(NAMES[:2])
+        ]
+        with patch.object(device, "wait_ui") as wait:
+            device.members({"Ready"})
+        predicate = wait.call_args.args[0]
+        self.assertTrue(predicate(nodes))
+        self.assertFalse(predicate(nodes[:1]))
+        self.assertFalse(predicate(nodes[1:]))
+        self.assertEqual(wait.call_args.kwargs, {"scroll": True})
+
+    def test_default_presence_still_requires_all_three_members(self):
+        nodes = [
+            Element(
+                "node",
+                **{"resource-id": f"member-{index}", "content-desc": f"{name}, Here"},
+            )
+            for index, name in enumerate(NAMES)
+        ]
+        with patch.object(self.device, "wait_ui") as wait:
+            self.device.members()
+        predicate = wait.call_args.args[0]
+        self.assertTrue(predicate(nodes))
+        self.assertFalse(predicate(nodes[:2]))
 
     def test_chat_requires_a_message_node_not_a_draft(self):
         message = Element(
@@ -567,94 +618,213 @@ class ScenarioTest(unittest.TestCase):
             self.assertIs(device.find_id("ready-toggle-button"), button)
         self.assertEqual(scroll.call_args_list, [call(True)] * 4 + [call(False)])
 
-    def devices(self):
-        devices = [Mock() for _ in range(3)]
+    def devices(self, count=3):
+        devices = [Mock() for _ in range(count)]
         devices[0].find_id.return_value = Element("node", text="0123456789AB")
         return devices
 
     def test_full_sequence_uses_every_device_and_leaves_guests_first(self):
-        devices = self.devices()
-        mapping_devices = [MappingDevice("tcp:18080") for _ in devices]
-        mappings = [ApiMapping(device, 18080) for device in mapping_devices]
-        passed = Mock()
-        order = []
-        for index, device in enumerate(devices):
-            device.leave.side_effect = lambda index=index: order.append(index)
-        exercise(devices, mappings, passed)
-        self.assertEqual(order, [2, 1, 0])
-        self.assertEqual(passed.call_count, 8)
-        for device in devices:
-            device.tap_id.assert_any_call("ready-toggle-button")
-            device.members.assert_any_call({"Ready"})
-            self.assertEqual(device.send.call_count, 2 if device is devices[0] else 1)
-            device.message.assert_any_call("Hello from friend B")
-        devices[1].command.assert_called_once_with("shell", "input", "keyevent", "3")
-        devices[0].stop_product.assert_called_once()
-        devices[2].stop_product.assert_called_once()
-        devices[2].tap_id.assert_any_call("resume-room-button")
-        self.assertEqual(mapping_devices[2].mapping, "tcp:18080")
+        for count in (2, 3):
+            with self.subTest(count=count):
+                devices = self.devices(count)
+                mapping_devices = [MappingDevice("tcp:18080") for _ in devices]
+                mappings = [ApiMapping(device, 18080) for device in mapping_devices]
+                passed = Mock()
+                order = []
+                for index, device in enumerate(devices):
+                    device.leave.side_effect = lambda index=index, order=order: (
+                        order.append(index)
+                    )
+                exercise(devices, mappings, passed)
+                self.assertEqual(order, list(reversed(range(count))))
+                self.assertEqual(passed.call_count, 8)
+                count_label = "two" if count == 2 else "three"
+                passed.assert_any_call(
+                    f"{count_label} devices join and see connected members"
+                )
+                passed.assert_any_call(f"readiness reaches all {count_label} devices")
+                last_message = (
+                    "Hello from friend A" if count == 2 else "Hello from friend B"
+                )
+                for device in devices:
+                    device.tap_id.assert_any_call("ready-toggle-button")
+                    device.members.assert_any_call({"Ready"})
+                    self.assertEqual(
+                        device.send.call_count, 2 if device is devices[0] else 1
+                    )
+                    device.message.assert_any_call(last_message)
+                for device, name in zip(devices[1:], NAMES[1:count], strict=True):
+                    device.fill_id.assert_any_call("display-name-input", name)
+                    device.fill_id.assert_any_call("invite-code-input", "0123456789AB")
+                    device.tap_id.assert_any_call("join-room-button")
+                devices[1].command.assert_called_once_with(
+                    "shell", "input", "keyevent", "3"
+                )
+                devices[0].stop_product.assert_called_once()
+                devices[-1].stop_product.assert_called_once()
+                devices[-1].tap_id.assert_any_call("resume-room-button")
+                self.assertEqual(mapping_devices[-1].mapping, "tcp:18080")
+                self.assertEqual(
+                    mapping_devices[-1].calls.count(
+                        ("reverse", "--remove", "tcp:8000")
+                    ),
+                    1,
+                )
+                self.assertTrue(
+                    all(not device.calls for device in mapping_devices[:-1])
+                )
+
+    def test_invalid_device_or_mapping_count_stops_before_ui_actions(self):
+        for count, mapping_count in ((1, 1), (4, 4), (2, 1), (3, 2)):
+            devices = self.devices(count)
+            passed = Mock()
+            with (
+                self.subTest(count=count, mapping_count=mapping_count),
+                self.assertRaises(RoomFailure),
+            ):
+                exercise(devices, [Mock() for _ in range(mapping_count)], passed)
+            passed.assert_not_called()
+            for device in devices:
+                self.assertEqual(device.mock_calls, [])
 
     def test_offline_ui_failure_restores_mapping_without_retry_or_leave(self):
-        devices = self.devices()
-        devices[2].find_id.side_effect = RoomFailure("expected_ui_state_missing")
-        mapping_devices = [MappingDevice("tcp:18080") for _ in devices]
-        mappings = [ApiMapping(device, 18080) for device in mapping_devices]
-        with self.assertRaises(RoomFailure):
-            exercise(devices, mappings, Mock())
-        self.assertEqual(mapping_devices[2].mapping, "tcp:18080")
-        self.assertNotIn(call("resume-room-button"), devices[2].tap_id.call_args_list)
-        for device in devices:
-            device.leave.assert_not_called()
+        for count in (2, 3):
+            with self.subTest(count=count):
+                devices = self.devices(count)
+                devices[-1].find_id.side_effect = RoomFailure(
+                    "expected_ui_state_missing"
+                )
+                mapping_devices = [MappingDevice("tcp:18080") for _ in devices]
+                mappings = [ApiMapping(device, 18080) for device in mapping_devices]
+                with self.assertRaises(RoomFailure):
+                    exercise(devices, mappings, Mock())
+                self.assertEqual(mapping_devices[-1].mapping, "tcp:18080")
+                self.assertNotIn(
+                    call("resume-room-button"), devices[-1].tap_id.call_args_list
+                )
+                for device in devices:
+                    device.leave.assert_not_called()
 
 
 class FailureCleanupTest(unittest.TestCase):
-    def test_scenario_failure_closes_every_mapping_and_redacts_result(self):
-        args = argparse.Namespace(
+    def arguments(self, count):
+        return argparse.Namespace(
             adb="unused",
-            device=["private-a", "private-b", "private-c"],
+            device=["private-a", "private-b", "private-c"][:count],
             host_port=18080,
             output=Path(".local-tools/room-test-unused"),
         )
-        devices = [Mock(label=f"device {index + 1}") for index in range(3)]
-        events = []
 
-        @contextmanager
-        def mapping(device, unused_port):
-            events.append(("open", device.label))
-            try:
-                yield Mock()
-            finally:
-                events.append(("close", device.label))
+    def test_main_assigns_selected_names_and_reports_actual_device_count(self):
+        for count in (2, 3):
+            with self.subTest(count=count):
+                args = self.arguments(count)
+                devices = [Mock() for _ in range(count)]
+                with (
+                    patch("rooms.parse_args", return_value=args),
+                    patch("rooms.prepare_output", return_value=Mock()),
+                    patch("rooms.RoomDevice", side_effect=devices) as create,
+                    patch("rooms.health") as health_check,
+                    patch("rooms.ApiMapping"),
+                    patch("rooms.exercise") as scenario,
+                    patch("rooms.write_result") as write,
+                    patch("builtins.print"),
+                ):
+                    self.assertEqual(main(), 0)
+                health_check.assert_called_once_with(18080)
+                self.assertEqual(
+                    create.call_args_list,
+                    [
+                        call(
+                            "unused", serial, f"device {index + 1}", names=NAMES[:count]
+                        )
+                        for index, serial in enumerate(args.device)
+                    ],
+                )
+                for device, name in zip(devices, NAMES[:count], strict=True):
+                    device.check_foreground.assert_called_once()
+                    device.launch_product.assert_called_once()
+                    device.verify_welcome.assert_called_once_with(name)
+                self.assertEqual(scenario.call_args.args[0], devices)
+                self.assertEqual(len(scenario.call_args.args[1]), count)
+                report = write.call_args.args[1]
+                self.assertEqual(report["deviceCount"], count)
+                self.assertEqual(report["backend"], "production")
+                self.assertFalse(report["audioTested"])
+                self.assertFalse(report["publicNetworkTested"])
+                count_label = "two" if count == 2 else "three"
+                self.assertEqual(
+                    report["checks"][-1]["name"],
+                    f"{count_label} empty welcome screens use the expected device API address",
+                )
 
+    def test_scenario_failure_closes_every_mapping_and_redacts_result(self):
+        for count in (2, 3):
+            with self.subTest(count=count):
+                args = self.arguments(count)
+                devices = [Mock(label=f"device {index + 1}") for index in range(count)]
+                events = []
+
+                @contextmanager
+                def mapping(device, unused_port, events=events):
+                    events.append(("open", device.label))
+                    try:
+                        yield Mock()
+                    finally:
+                        events.append(("close", device.label))
+
+                with (
+                    patch("rooms.parse_args", return_value=args),
+                    patch("rooms.prepare_output", return_value=Mock()),
+                    patch("rooms.RoomDevice", side_effect=devices),
+                    patch("rooms.health"),
+                    patch("rooms.ApiMapping", side_effect=mapping),
+                    patch(
+                        "rooms.exercise",
+                        side_effect=RuntimeError("secret invite token private-a"),
+                    ),
+                    patch("rooms.write_result") as write,
+                    patch("builtins.print"),
+                ):
+                    self.assertEqual(main(), 1)
+                self.assertEqual(
+                    events[-count:],
+                    [("close", f"device {index}") for index in range(count, 0, -1)],
+                )
+                report = write.call_args.args[1]
+                raw = json.dumps(report)
+                for private in (
+                    "secret",
+                    "invite token",
+                    "private-a",
+                    "private-b",
+                    "private-c",
+                ):
+                    self.assertNotIn(private, raw)
+                self.assertEqual(report["deviceCount"], count)
+                self.assertEqual(report["checks"][-1]["result"], "failed")
+
+    def test_two_device_saved_room_prevents_scenario_and_restores_mappings(self):
+        devices = [Mock(), Mock()]
+        devices[1].verify_welcome.side_effect = RoomFailure("saved_room_present")
+        mappings = [MagicMock(), MagicMock()]
         with (
-            patch("rooms.parse_args", return_value=args),
+            patch("rooms.parse_args", return_value=self.arguments(2)),
             patch("rooms.prepare_output", return_value=Mock()),
             patch("rooms.RoomDevice", side_effect=devices),
             patch("rooms.health"),
-            patch("rooms.ApiMapping", side_effect=mapping),
-            patch(
-                "rooms.exercise",
-                side_effect=RuntimeError("secret invite token private-a"),
-            ),
+            patch("rooms.ApiMapping", side_effect=mappings),
+            patch("rooms.exercise") as scenario,
             patch("rooms.write_result") as write,
             patch("builtins.print"),
         ):
             self.assertEqual(main(), 1)
+        scenario.assert_not_called()
+        for mapping in mappings:
+            mapping.__exit__.assert_called_once()
         self.assertEqual(
-            events[-3:],
-            [("close", "device 3"), ("close", "device 2"), ("close", "device 1")],
+            write.call_args.args[1]["checks"][-1]["reason"], "saved_room_present"
         )
-        report = write.call_args.args[1]
-        raw = json.dumps(report)
-        for private in (
-            "secret",
-            "invite token",
-            "private-a",
-            "private-b",
-            "private-c",
-        ):
-            self.assertNotIn(private, raw)
-        self.assertEqual(report["checks"][-1]["result"], "failed")
 
 
 if __name__ == "__main__":

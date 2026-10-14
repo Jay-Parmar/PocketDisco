@@ -16,7 +16,7 @@ from tools.mobile_e2e.run import port_number
 
 ROOT = Path(__file__).resolve().parents[2]
 NAMES = ("Room Host", "Room Friend A", "Room Friend B")
-ROOM_NAME = "PocketDisco Three Device Test"
+ROOM_NAME = "PocketDisco Room Test"
 HINTS = {
     "display-name-input": "What should we call you?",
     "room-name-input": "Friday night feels",
@@ -137,8 +137,9 @@ def message_present(nodes, message):
 
 
 class RoomDevice(ProductDevice):
-    def __init__(self, adb, serial, label):
+    def __init__(self, adb, serial, label, names=NAMES):
         super().__init__(adb, serial, label)
+        self.names = tuple(names)
         self.fresh_check = False
         self.deadline = time.monotonic() + 900
         self.last_nodes = []
@@ -256,7 +257,9 @@ class RoomDevice(ProductDevice):
     def members(self, statuses=None):
         expected = statuses or {"Here", "Ready"}
         self.wait_ui(
-            lambda nodes: all(member_present(nodes, name, expected) for name in NAMES),
+            lambda nodes: all(
+                member_present(nodes, name, expected) for name in self.names
+            ),
             scroll=True,
         )
 
@@ -317,7 +320,11 @@ class RoomDevice(ProductDevice):
 
 
 def exercise(devices, mappings, passed):
-    host, friend, retry = devices
+    if len(devices) not in (2, 3) or len(mappings) != len(devices):
+        raise RoomFailure("unsupported_device_count")
+    host, friend, retry = devices[0], devices[1], devices[-1]
+    names = NAMES[: len(devices)]
+    count_label = "two" if len(devices) == 2 else "three"
     host.fill_id("display-name-input", NAMES[0])
     host.fill_id("room-name-input", ROOM_NAME)
     host.tap_id("create-room-button")
@@ -326,7 +333,7 @@ def exercise(devices, mappings, passed):
     if not re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{12}", invite):
         raise RoomFailure("unexpected_test_invite")
     passed("host creates a private room")
-    for device, name in zip(devices[1:], NAMES[1:], strict=True):
+    for device, name in zip(devices[1:], names[1:], strict=True):
         device.tap_id("join-tab")
         device.fill_id("display-name-input", name)
         device.fill_id("invite-code-input", invite)
@@ -334,13 +341,15 @@ def exercise(devices, mappings, passed):
         device.connected()
     for device in devices:
         device.members()
-    passed("three devices join and see connected members")
+    passed(f"{count_label} devices join and see connected members")
     for device in devices:
         device.tap_id("ready-toggle-button")
     for device in devices:
         device.members({"Ready"})
-    passed("readiness reaches all three devices")
-    messages = ("Hello from the host", "Hello from friend A", "Hello from friend B")
+    passed(f"readiness reaches all {count_label} devices")
+    messages = ("Hello from the host", "Hello from friend A", "Hello from friend B")[
+        : len(devices)
+    ]
     for device, message in zip(devices, messages, strict=True):
         device.send(message)
     for device in devices:
@@ -361,12 +370,12 @@ def exercise(devices, mappings, passed):
     host.stop_product()
     host.launch_product()
     host.connected()
-    host.message(messages[2])
+    host.message(messages[-1])
     for device in devices:
         device.members()
     passed("host process restart restores the saved room")
     retry.stop_product()
-    with mappings[2].offline():
+    with mappings[-1].offline():
         retry.launch_product()
         retry.find_id("resume-room-button")
     retry.tap_id("resume-room-button")
@@ -388,11 +397,11 @@ def parse_args(argv=None):
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
     if (
-        len(args.device) != 3
-        or len(set(args.device)) != 3
+        len(args.device) not in (2, 3)
+        or len(set(args.device)) != len(args.device)
         or any(not value.strip() for value in args.device)
     ):
-        parser.error("Use exactly three distinct explicit devices, with the host first")
+        parser.error("Use two or three distinct explicit devices, with the host first")
     return args
 
 
@@ -429,9 +438,11 @@ def main():
         print("FAIL use_new_local_tools_output", flush=True)
         return 2
     checks = []
+    names = NAMES[: len(args.device)]
+    count_label = "two" if len(args.device) == 2 else "three"
     report = {
         "startedAtUtc": utc_now(),
-        "deviceCount": 3,
+        "deviceCount": len(args.device),
         "package": PRODUCT,
         "transport": "ADB loopback through the configured SSH tunnel",
         "hostPort": args.host_port,
@@ -447,7 +458,7 @@ def main():
 
     try:
         devices = [
-            RoomDevice(args.adb, serial, f"device {index + 1}")
+            RoomDevice(args.adb, serial, f"device {index + 1}", names=names)
             for index, serial in enumerate(args.device)
         ]
         health(args.host_port)
@@ -460,10 +471,12 @@ def main():
                 stack.enter_context(ApiMapping(device, args.host_port))
                 for device in devices
             ]
-            for device, name in zip(devices, NAMES, strict=True):
+            for device, name in zip(devices, names, strict=True):
                 device.launch_product()
                 device.verify_welcome(name)
-            passed("three empty welcome screens use the expected device API address")
+            passed(
+                f"{count_label} empty welcome screens use the expected device API address"
+            )
             exercise(devices, mappings, passed)
     except (Exception, KeyboardInterrupt) as error:  # noqa: BLE001
         reason = str(error) if isinstance(error, RoomFailure) else "device_check_failed"
