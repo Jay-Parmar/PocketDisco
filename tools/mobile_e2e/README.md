@@ -36,16 +36,19 @@ app and ignores clipped views before tapping.
 python -m unittest discover -s tools/mobile_e2e -v
 ```
 
-## Three devices and a deployed backend
+## Two or three devices and a deployed backend
 
-Use `rooms.py` for two physical phones and one emulator. It requires three
-explicit serials, with the room host first, and a healthy production backend
+Use `rooms.py` for one phone and an emulator, or two phones and an emulator.
+It requires two or three distinct explicit serials, with the room host first,
+and a healthy production backend
 already reachable through a local SSH tunnel. Install the internal APK and
 unlock all devices. Leave each at the launcher or the product welcome screen,
 with no saved room or personal form input. The saved app API address must be
 `http://127.0.0.1:8000`. The runner inspects it without changing it.
 
 ```powershell
+python tools/mobile_e2e/rooms.py --adb .local-tools/android-sdk/platform-tools/adb.exe --device HOST_PHONE_SERIAL --device emulator-5554 --host-port 18080 --output .local-tools/mobile-rooms-two-new
+
 python tools/mobile_e2e/rooms.py --adb .local-tools/android-sdk/platform-tools/adb.exe --device HOST_PHONE_SERIAL --device FRIEND_PHONE_SERIAL --device emulator-5554 --host-port 18080 --output .local-tools/mobile-rooms-three-new
 ```
 
@@ -56,10 +59,11 @@ preserved. The offline check temporarily removes one device's mapping and
 restores it even if the UI check fails, without replacing a conflicting mapping
 created by another process.
 
-The test creates one room, joins both other devices, checks presence and
-readiness on all three, exchanges chat, backgrounds one member, restarts the
-host process, and retries a saved room after an offline cold start. Successful
-runs leave both guests first and the host last through the UI. Guest accounts,
+The test creates one room, joins each guest, checks presence and readiness on
+every selected device, exchanges chat, backgrounds the first guest, restarts
+the host process, and retries the last guest's saved room after an offline
+cold start. With two clients, the same guest performs both recovery checks.
+Successful runs leave the guests first and the host last through the UI. Guest accounts,
 chat and the closed room remain on the backend. Failed runs may leave the test
 room open for inspection; leave it manually before trying again.
 
