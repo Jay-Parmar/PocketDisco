@@ -243,6 +243,67 @@ class DeviceSafetyTest(unittest.TestCase):
             self.device.launch_product()
         command.assert_not_called()
 
+    def test_stop_goes_home_and_confirms_launcher_before_stopping_only_product(self):
+        order = Mock()
+        with (
+            patch.object(self.device, "check_foreground") as guard,
+            patch.object(self.device, "command") as command,
+            patch.object(
+                self.device, "foreground", side_effect=[PRODUCT, "com.nothing.launcher"]
+            ) as foreground,
+            patch("rooms.time.sleep"),
+        ):
+            order.attach_mock(guard, "guard")
+            order.attach_mock(command, "command")
+            order.attach_mock(foreground, "foreground")
+            self.device.stop_product()
+        self.assertEqual(
+            order.mock_calls,
+            [
+                call.guard({PRODUCT}),
+                call.command("shell", "input", "keyevent", "3"),
+                call.foreground(),
+                call.foreground(),
+                call.command("shell", "am", "force-stop", PRODUCT),
+            ],
+        )
+
+    def test_stop_does_not_press_home_over_an_unexpected_foreground(self):
+        with (
+            patch.object(
+                self.device,
+                "check_foreground",
+                side_effect=AssertionError("another app"),
+            ),
+            patch.object(self.device, "command") as command,
+            self.assertRaises(AssertionError),
+        ):
+            self.device.stop_product()
+        command.assert_not_called()
+
+    def test_stop_refuses_force_stop_if_home_reveals_an_unexpected_app(self):
+        with (
+            patch.object(self.device, "check_foreground"),
+            patch.object(self.device, "command") as command,
+            patch.object(self.device, "foreground", return_value="another.app"),
+            self.assertRaisesRegex(RoomFailure, "^product_home_not_confirmed$"),
+        ):
+            self.device.stop_product()
+        command.assert_called_once_with("shell", "input", "keyevent", "3")
+
+    def test_stop_waits_for_home_with_a_bound_and_never_stops_without_launcher(self):
+        with (
+            patch.object(self.device, "check_foreground"),
+            patch.object(self.device, "command") as command,
+            patch.object(self.device, "foreground", return_value=PRODUCT) as foreground,
+            patch("rooms.time.sleep") as sleep,
+            self.assertRaisesRegex(RoomFailure, "^product_home_not_confirmed$"),
+        ):
+            self.device.stop_product()
+        command.assert_called_once_with("shell", "input", "keyevent", "3")
+        self.assertEqual(foreground.call_count, 25)
+        self.assertEqual(sleep.call_args_list, [call(0.1)] * 25)
+
     def test_saved_room_is_rejected_before_welcome_actions(self):
         self.device.fresh_check = True
         nodes = [

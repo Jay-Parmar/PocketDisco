@@ -365,7 +365,19 @@ class RoomDevice(ProductDevice):
 
     def stop_product(self):
         self.check_foreground({PRODUCT})
-        self.command("shell", "am", "force-stop", PRODUCT)
+        self.command("shell", "input", "keyevent", "3")
+        deadline = min(time.monotonic() + 5, self.deadline)
+        for _ in range(25):
+            if time.monotonic() >= deadline:
+                break
+            foreground = self.foreground()
+            if foreground in LAUNCHERS:
+                self.command("shell", "am", "force-stop", PRODUCT)
+                return
+            if foreground and foreground != PRODUCT:
+                break
+            time.sleep(0.1)
+        raise RoomFailure("product_home_not_confirmed")
 
     def leave(self):
         self.tap_id("leave-room-button")
