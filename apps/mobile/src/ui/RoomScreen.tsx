@@ -66,6 +66,7 @@ export function RoomScreen({
   const followMessages = useRef(false);
   const [section, setSection] = useState<RoomSection>('room');
   const sectionOffsets = useRef({ room: 0, audio: Infinity, chat: Infinity });
+  const errorOffset = useRef(0);
 
   function goToSection(next: RoomSection) {
     Keyboard.dismiss();
@@ -74,7 +75,10 @@ export function RoomScreen({
     if (next === 'chat') {
       scroll.current?.scrollToEnd({ animated: true });
     } else {
-      const offset = sectionOffsets.current[next];
+      const offset =
+        next === 'room' && error
+          ? errorOffset.current
+          : sectionOffsets.current[next];
       scroll.current?.scrollTo({
         y: Number.isFinite(offset) ? offset : 0,
         animated: true,
@@ -127,13 +131,22 @@ export function RoomScreen({
                 testID={`room-nav-${item}`}
                 accessibilityRole="button"
                 accessibilityLabel={
-                  item === 'room' ? 'Room' : item === 'audio' ? 'Audio' : 'Chat'
+                  item === 'room' && error
+                    ? `Room, view error. ${error}`
+                    : item === 'room'
+                    ? 'Room'
+                    : item === 'audio'
+                    ? 'Audio'
+                    : 'Chat'
                 }
                 accessibilityHint={`Scroll to ${
-                  item === 'chat'
+                  item === 'room' && error
+                    ? 'the room error'
+                    : item === 'chat'
                     ? 'the latest messages'
                     : `the ${item} section`
                 }`}
+                accessibilityLiveRegion={item === 'room' ? 'polite' : undefined}
                 accessibilityState={{ selected: section === item }}
                 onPress={() => goToSection(item)}
                 style={({ pressed }) => [
@@ -154,6 +167,17 @@ export function RoomScreen({
                     ? 'Audio'
                     : 'Chat'}
                 </Text>
+                {item === 'room' && error && (
+                  <Text
+                    testID="room-error-shortcut"
+                    style={[
+                      styles.navErrorHint,
+                      section === item && styles.navSelectedLabel,
+                    ]}
+                  >
+                    View error
+                  </Text>
+                )}
               </Pressable>
             ))}
           </View>
@@ -227,7 +251,14 @@ export function RoomScreen({
               </View>
             )}
             {error ? (
-              <ErrorBanner message={error} onDismiss={onDismissError} />
+              <View
+                testID="room-error-details"
+                onLayout={({ nativeEvent }) => {
+                  errorOffset.current = nativeEvent.layout.y;
+                }}
+              >
+                <ErrorBanner message={error} onDismiss={onDismissError} />
+              </View>
             ) : null}
             <View style={styles.inviteCard}>
               <Text style={styles.inviteTitle}>Save a spot for a friend.</Text>
@@ -380,6 +411,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   navSelectedLabel: { color: colors.paper },
+  navErrorHint: {
+    color: colors.error,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   navPressed: { opacity: 0.75 },
   roomHeading: { gap: 9 },
   eyebrow: {

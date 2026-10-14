@@ -180,6 +180,41 @@ test('an early audio shortcut never passes an unmeasured offset to native scroll
   expect(scrollTo).toHaveBeenLastCalledWith({ y: 0, animated: true });
 });
 
+test('keeps a failed room action visible from chat and jumps to its details', async () => {
+  const props = await render();
+  const scrollTo = jest.spyOn(
+    screen.root.findByType(ScrollView).instance,
+    'scrollTo',
+  );
+  await press('room-nav-chat');
+  await act(async () => {
+    screen.update(
+      <RoomScreen {...props} error="Could not leave the room. Try again." />,
+    );
+  });
+  expect(
+    screen.root
+      .findByProps({ testID: 'room-header' })
+      .findByProps({ testID: 'room-error-shortcut' }).props.children,
+  ).toBe('View error');
+  expect(button('room-nav-room').props.accessibilityLabel).toContain(
+    'Could not leave the room.',
+  );
+  await act(async () => {
+    screen.root.findByProps({ testID: 'room-error-details' }).props.onLayout({
+      nativeEvent: { layout: { y: 290 } },
+    });
+  });
+  await press('room-nav-room');
+  expect(scrollTo).toHaveBeenLastCalledWith({ y: 290, animated: true });
+  await act(async () => screen.update(<RoomScreen {...props} error={null} />));
+  expect(
+    screen.root.findAllByProps({ testID: 'room-error-shortcut' }),
+  ).toHaveLength(0);
+  await press('room-nav-room');
+  expect(scrollTo).toHaveBeenLastCalledWith({ y: 0, animated: true });
+});
+
 test('sends readiness intent without pretending the server accepted it', async () => {
   const props = await render();
   await press('ready-toggle-button');
